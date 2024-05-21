@@ -3,11 +3,14 @@ import eventlet
 eventlet.monkey_patch()
 import time
 import threading
+import random
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import threading
 import time
+
+import vanillapoker.poker
 
 app = Flask(__name__)
 # TEMP - need to make this an environment variable
@@ -16,8 +19,8 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app)
 
 
-# TEMP - hardcode handId to get fake data going
-handId = 123
+# In-memory game store
+TABLE_STORE = {}
 
 
 @socketio.on("connect")
@@ -37,50 +40,147 @@ def ping_loop():
         print("SENDING!!")
         count += 1
         # https://flask-socketio.readthedocs.io/en/latest/api.html#flask_socketio.SocketIO.emit
-        socketio.emit(handId, {"data": f"Server generated event {count}"})
+        socketio.emit("server_data", {"data": f"Server generated event {count}"})
 
 
 @app.route("/joinTable", methods=["POST"])
 def join_table():
-    player = request.json["player"]
+    table_id = request.json["tableId"]
+    player_id = request.json["playerId"]
     deposit_amount = request.json["depositAmount"]
-    seat = request.json["seat"]
-    socketio.emit(
-        handId,
-        {"tag": "rebuy", "player": player, "seat": seat, "action": deposit_amount},
-    )
+    seat_i = request.json["seatI"]
+    poker_table_obj = TABLE_STORE[table_id]
+    poker_table_obj.join_table(seat_i, deposit_amount, player_id)
+    ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
 
 
 @app.route("/leaveTable", methods=["POST"])
 def leave_table():
-    player = request.json["player"]
-    seat = request.json["seat"]
-    socketio.emit(handId, {"tag": "leaveTable", "player": player, "seat": seat})
+    table_id = request.json["tableId"]
+    player_id = request.json["playerId"]
+    seat_i = request.json["seatI"]
+    poker_table_obj = TABLE_STORE[table_id]
+    poker_table_obj.leave_table(seat_i, player_id)
+    ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
 
 
 @app.route("/rebuy", methods=["POST"])
 def rebuy():
-    player = request.json["player"]
-    deposit_amount = request.json["depositAmount"]
-    seat = request.json["seat"]
-    socketio.emit(
-        handId,
-        {"tag": "rebuy", "player": player, "seat": seat, "action": deposit_amount},
-    )
+    table_id = request.json["tableId"]
+    player_id = request.json["playerId"]
+    rebuy_amount = request.json["rebuyAmount"]
+    seat_i = request.json["seatI"]
+    poker_table_obj = TABLE_STORE[table_id]
+    poker_table_obj.rebuy(seat_i, rebuy_amount, player_id)
+    ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
 
 
 @app.route("/takeAction", methods=["POST"])
 def take_action():
-    player = request.json["player"]
-    seat = request.json["seat"]
-    action = request.json["seat"]
-    socketio.emit(
-        handId, {"tag": "action", "player": player, "seat": seat, "action": action}
-    )
+    table_id = request.json["tableId"]
+    player_id = request.json["playerId"]
+    seat_i = request.json["seatI"]
+    action_type = request.json["actionType"]
+    amount = request.json["amount"]
+    poker_table_obj = TABLE_STORE[table_id]
+    poker_table_obj.take_action(action_type, player_id, amount)
+    ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
+
+
+def gen_new_table_id():
+    table_id = None
+    while not table_id or table_id in TABLE_STORE:
+        table_id = 10000 + int(random.random() * 990000)
+    return table_id
+
+
+@app.route("/createNewTable", methods=["POST"])
+def create_new_table():
+    # Need validation here too?
+    small_blind = request.json["small_blind"]
+    big_blind = request.json["big_blind"]
+    min_buyin = request.json["min_buyin"]
+    max_buyin = request.json["max_buyin"]
+    num_seats = request.json["num_seats"]
+
+    # Validate params...
+    assert num_seats in [2, 6]
+    assert big_blind == small_blind * 2
+    # Min_buyin
+    assert 10 * big_blind <= min_buyin <= 400 * big_blind
+    assert 10 * big_blind <= max_buyin <= 1000 * big_blind
+    assert min_buyin <= max_buyin
+
+    poker_table_obj = vanillapoker.poker.PokerTable(
+        small_blind, big_blind, min_buyin, max_buyin, num_seats
+    )
+    table_id = gen_new_table_id()
+
+    TABLE_STORE[table_id] = poker_table_obj
+
+    # Does this make sense?  Returning null response for all others
+    return jsonify({"tableId": table_id}), 200
+
+
+@app.route("/getTables", methods=["GET"])
+def get_tables():
+    # Example element...
+    # {
+    #     "tableId": 456,
+    #     "numSeats": 6,
+    #     "smallBlind": 1,
+    #     "bigBlind": 2,
+    #     "minBuyin": 20,
+    #     "maxBuyin": 400,
+    #     "numPlayers": 2,
+    # },
+    tables = []
+    for table_id, table_obj in TABLE_STORE.items():
+        table_info = {
+            "tableId": 456,
+            "numSeats": 6,
+            "smallBlind": 1,
+            "bigBlind": 2,
+            "minBuyin": 20,
+            "maxBuyin": 400,
+            "numPlayers": 2,
+        }
+        tables.append(table_info)
+        print(table_id, table_obj)
+
+    return jsonify({"tables": tables}), 200
+
+
+@app.route("/getTable", methods=["GET"])
+def get_table():
+    table_id = request.json["tableId"]
+    poker_table_obj = TABLE_STORE[table_id]
+
+    table_info = {
+        "tableId": table_id,
+        "numSeats": poker_table_obj.mum_seats,
+        "smallBlind": poker_table_obj.small_blind,
+        "bigBlind": poker_table_obj.big_blind,
+        "minBuyin": poker_table_obj.min_buyin,
+        "maxBuyin": poker_table_obj.max_buyin,
+        "players": poker_table_obj.seats,
+        "board": poker_table_obj.board,
+        "pot": poker_table_obj.pot,
+        "button": poker_table_obj.button,
+        "whoseTurn": poker_table_obj.whose_turn,
+    }
+    return jsonify({"table_info": table_info}), 200
+
+
+def ws_emit_actions(table_id, poker_table_obj):
+    for i in range(poker_table_obj.emit_i, len(poker_table_obj.actions)):
+        action = poker_table_obj.actions[i]
+        socketio.emit(table_id, action)
+        poker_table_obj.emit_i = i + 1
 
 
 if __name__ == "__main__":
@@ -89,6 +189,6 @@ if __name__ == "__main__":
     thread.daemon = True
     thread.start()
 
-    socketio.run(app, debug=True)
+    # socketio.run(app, debug=True)
     # To run on server, run this way
-    # socketio.run(app, host="0.0.0.0", debug=True)
+    socketio.run(app, host="0.0.0.0", debug=True)
