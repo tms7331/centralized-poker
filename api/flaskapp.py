@@ -49,7 +49,7 @@ def ping_loop():
 @app.route("/joinTable", methods=["POST"])
 def join_table():
     table_id = request.json["tableId"]
-    player_id = request.json["playerId"]
+    player_id = request.json["address"]
     deposit_amount = request.json["depositAmount"]
     seat_i = request.json["seatI"]
     poker_table_obj = TABLE_STORE[table_id]
@@ -64,7 +64,7 @@ def join_table():
 @app.route("/leaveTable", methods=["POST"])
 def leave_table():
     table_id = request.json["tableId"]
-    player_id = request.json["playerId"]
+    player_id = request.json["address"]
     seat_i = request.json["seatI"]
     poker_table_obj = TABLE_STORE[table_id]
     poker_table_obj.leave_table(seat_i, player_id)
@@ -75,7 +75,7 @@ def leave_table():
 @app.route("/rebuy", methods=["POST"])
 def rebuy():
     table_id = request.json["tableId"]
-    player_id = request.json["playerId"]
+    player_id = request.json["address"]
     rebuy_amount = request.json["rebuyAmount"]
     seat_i = request.json["seatI"]
     poker_table_obj = TABLE_STORE[table_id]
@@ -87,7 +87,7 @@ def rebuy():
 @app.route("/takeAction", methods=["POST"])
 def take_action():
     table_id = request.json["tableId"]
-    player_id = request.json["playerId"]
+    player_id = request.json["address"]
     seat_i = request.json["seatI"]
     action_type = request.json["actionType"]
     amount = request.json["amount"]
@@ -167,6 +167,29 @@ def get_table():
     table_id = request.args.get("table_id")
     poker_table_obj = TABLE_STORE[table_id]
 
+    fake_players = [
+        {
+            "player_id": "0x123",
+            "stack": 88,
+            "in_hand": True,
+            "auto_post": False,
+            "sitting_out": False,
+            "bet_street": 17,
+            "showdown_val": 8000,
+            "holecards": [],
+        },
+        {
+            "player_id": "0x456",
+            "stack": 45,
+            "in_hand": True,
+            "auto_post": False,
+            "sitting_out": False,
+            "bet_street": 12,
+            "showdown_val": 8000,
+            "holecards": [],
+        },
+    ]
+
     table_info = {
         "tableId": table_id,
         "numSeats": poker_table_obj.num_seats,
@@ -174,11 +197,13 @@ def get_table():
         "bigBlind": poker_table_obj.big_blind,
         "minBuyin": poker_table_obj.min_buyin,
         "maxBuyin": poker_table_obj.max_buyin,
-        "players": poker_table_obj.seats,
+        "players": fake_players,  # poker_table_obj.seats,
         "board": poker_table_obj.board,
         "pot": poker_table_obj.pot,
         "button": poker_table_obj.button,
         "whoseTurn": poker_table_obj.whose_turn,
+        # name is string, value is int
+        "handStage": poker_table_obj.hand_stage.value,
     }
     return jsonify({"table_info": table_info}), 200
 
