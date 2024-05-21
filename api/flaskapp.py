@@ -52,11 +52,12 @@ def join_table():
     player_id = request.json["address"]
     deposit_amount = request.json["depositAmount"]
     seat_i = request.json["seatI"]
+    if table_id not in TABLE_STORE:
+        return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
     # Not using seat_i for now
     # poker_table_obj.join_table(seat_i, deposit_amount, player_id)
     poker_table_obj.join_table_next_seat_i(deposit_amount, player_id)
-
     ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
 
@@ -66,6 +67,8 @@ def leave_table():
     table_id = request.json["tableId"]
     player_id = request.json["address"]
     seat_i = request.json["seatI"]
+    if table_id not in TABLE_STORE:
+        return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
     poker_table_obj.leave_table(seat_i, player_id)
     ws_emit_actions(table_id, poker_table_obj)
@@ -78,6 +81,8 @@ def rebuy():
     player_id = request.json["address"]
     rebuy_amount = request.json["rebuyAmount"]
     seat_i = request.json["seatI"]
+    if table_id not in TABLE_STORE:
+        return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
     poker_table_obj.rebuy(seat_i, rebuy_amount, player_id)
     ws_emit_actions(table_id, poker_table_obj)
@@ -91,6 +96,8 @@ def take_action():
     seat_i = request.json["seatI"]
     action_type = request.json["actionType"]
     amount = request.json["amount"]
+    if table_id not in TABLE_STORE:
+        return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
     poker_table_obj.take_action(action_type, player_id, amount)
     ws_emit_actions(table_id, poker_table_obj)
@@ -125,7 +132,6 @@ def create_new_table():
         small_blind, big_blind, min_buyin, max_buyin, num_seats
     )
     table_id = gen_new_table_id()
-
     TABLE_STORE[table_id] = poker_table_obj
 
     # Does this make sense?  Returning null response for all others
@@ -165,11 +171,14 @@ def get_tables():
 @app.route("/getTable", methods=["GET"])
 def get_table():
     table_id = request.args.get("table_id")
+    if table_id not in TABLE_STORE:
+        return jsonify({"success": False}), 400
+
     poker_table_obj = TABLE_STORE[table_id]
 
     fake_players = [
         {
-            "player_id": "0x123",
+            "address": "0x123",
             "stack": 88,
             "in_hand": True,
             "auto_post": False,
@@ -179,7 +188,7 @@ def get_table():
             "holecards": [],
         },
         {
-            "player_id": "0x456",
+            "address": "0x456",
             "stack": 45,
             "in_hand": True,
             "auto_post": False,

@@ -93,25 +93,25 @@ class PokerTable:
     def increment_hand_id(cls):
         cls.hand_id += 1
 
-    def join_table_next_seat_i(self, deposit_amount, player_id):
+    def join_table_next_seat_i(self, deposit_amount: int, address: str):
         """
         Helper function to add player to next available seat
         """
         for seat_i, player in enumerate(self.seats):
             if player is None:
-                self.join_table(seat_i, deposit_amount, player_id)
+                self.join_table(seat_i, deposit_amount, address)
                 break
 
-    def join_table(self, seat_i, deposit_amount, player_id):
+    def join_table(self, seat_i: int, deposit_amount: int, address: str):
         """
-        player_id should be a unique identifier for that player
+        address should be a unique identifier for that player
         """
         assert self.seats[seat_i] == None, "seat_i taken!"
         assert (
             self.min_buyin <= deposit_amount <= self.max_buyin
         ), "Invalid deposit amount!"
         self.seats[seat_i] = {
-            "player_id": player_id,
+            "address": address,
             "stack": deposit_amount,
             "in_hand": True,
             "auto_post": False,
@@ -120,25 +120,25 @@ class PokerTable:
             "showdown_val": 8000,
             "holecards": [],
         }
-        self.player_to_seat[player_id] = seat_i
+        self.player_to_seat[address] = seat_i
 
         self.events.append(
             {
                 "tag": "rebuy",
-                "player": player_id,
+                "player": address,
                 "seat": seat_i,
                 "deposit_amount": deposit_amount,
             }
         )
 
-    def leave_table(self, seat_i, player_id):
-        assert self.seats[seat_i]["player_id"] == player_id, "Player not at seat!"
+    def leave_table(self, seat_i: int, address: str):
+        assert self.seats[seat_i]["address"] == address, "Player not at seat!"
         self.seats[seat_i] = None
-        self.player_to_seat.pop(player_id)
-        self.events.append({"tag": "leaveTable", "player": player_id, "seat": seat_i})
+        self.player_to_seat.pop(address)
+        self.events.append({"tag": "leaveTable", "player": address, "seat": seat_i})
 
-    def rebuy(self, seat_i: int, rebuy_amount: int, player_id: str):
-        assert self.seats[seat_i]["player_id"] == player_id, "Player not at seat!"
+    def rebuy(self, seat_i: int, rebuy_amount: int, address: str):
+        assert self.seats[seat_i]["address"] == address, "Player not at seat!"
         new_stack = self.seats[seat_i]["stack"] + rebuy_amount
         assert self.min_buyin <= new_stack <= self.max_buyin, "Invalid rebuy amount"
         self.seats[seat_i]["stack"] = new_stack
@@ -146,7 +146,7 @@ class PokerTable:
         self.events.append(
             {
                 "tag": "rebuy",
-                "player": player_id,
+                "player": address,
                 "seat": seat_i,
                 "rebuy_amount": rebuy_amount,
             }
@@ -251,8 +251,8 @@ class PokerTable:
                 {"tag": "cards", "card_type": "river", "cards": self.deck[4:5]}
             )
 
-    def take_action(self, action_type: ActionType, player_id: str, amount: int):
-        seat_i = self.player_to_seat[player_id]
+    def take_action(self, action_type: ActionType, address: str, amount: int):
+        seat_i = self.player_to_seat[address]
         assert seat_i == self.whose_turn, "Not player's turn!"
 
         # Make sure it's their turn to act and they're in the hand?
@@ -346,7 +346,7 @@ class PokerTable:
             # And info about actual action that was taken?
             "action_type": action_type,
             "amount": amount,
-            "player_id": player_id,
+            "address": address,
         }
         self.events.append(action)
 
