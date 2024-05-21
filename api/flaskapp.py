@@ -98,7 +98,7 @@ def gen_new_table_id():
     table_id = None
     while not table_id or table_id in TABLE_STORE:
         table_id = 10000 + int(random.random() * 990000)
-    return table_id
+    return str(table_id)
 
 
 @app.route("/createNewTable", methods=["POST"])
@@ -161,12 +161,12 @@ def get_tables():
 
 @app.route("/getTable", methods=["GET"])
 def get_table():
-    table_id = request.json["tableId"]
+    table_id = request.args.get("table_id")
     poker_table_obj = TABLE_STORE[table_id]
 
     table_info = {
         "tableId": table_id,
-        "numSeats": poker_table_obj.mum_seats,
+        "numSeats": poker_table_obj.num_seats,
         "smallBlind": poker_table_obj.small_blind,
         "bigBlind": poker_table_obj.big_blind,
         "minBuyin": poker_table_obj.min_buyin,
@@ -181,10 +181,9 @@ def get_table():
 
 
 def ws_emit_actions(table_id, poker_table_obj):
-    for i in range(poker_table_obj.emit_i, len(poker_table_obj.actions)):
-        action = poker_table_obj.actions[i]
-        socketio.emit(table_id, action)
-        poker_table_obj.emit_i = i + 1
+    while poker_table_obj.events:
+        event = poker_table_obj.events.pop(0)
+        socketio.emit(table_id, event)
 
 
 if __name__ == "__main__":

@@ -85,11 +85,9 @@ class PokerTable:
 
         self.deck = list(range(52))
         random.shuffle(self.deck)
-        # Build up a hand history?
         self.board = []
+        # We'll pop from this array in the api
         self.events = []
-        # For api, track which events we've emitted via websocket
-        self.emit_i = 0
 
     @classmethod
     def increment_hand_id(cls):
@@ -410,7 +408,6 @@ class PokerTable:
         self.deck = list(range(52))
 
         random.shuffle(self.deck)
-        self.events = []
 
         self.increment_hand_id()
 
