@@ -10,7 +10,10 @@ from flask_cors import CORS
 import threading
 import time
 
-import vanillapoker.poker
+import sys
+
+sys.path.append("../")
+from vanillapoker import poker
 
 app = Flask(__name__)
 # TEMP - need to make this an environment variable
@@ -118,7 +121,7 @@ def create_new_table():
     assert 10 * big_blind <= max_buyin <= 1000 * big_blind
     assert min_buyin <= max_buyin
 
-    poker_table_obj = vanillapoker.poker.PokerTable(
+    poker_table_obj = poker.PokerTable(
         small_blind, big_blind, min_buyin, max_buyin, num_seats
     )
     table_id = gen_new_table_id()
