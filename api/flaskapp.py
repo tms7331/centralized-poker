@@ -50,7 +50,10 @@ def join_table():
     deposit_amount = request.json["depositAmount"]
     seat_i = request.json["seatI"]
     poker_table_obj = TABLE_STORE[table_id]
-    poker_table_obj.join_table(seat_i, deposit_amount, player_id)
+    # Not using seat_i for now
+    # poker_table_obj.join_table(seat_i, deposit_amount, player_id)
+    poker_table_obj.join_table_next_seat_i(deposit_amount, player_id)
+
     ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
 
@@ -101,11 +104,11 @@ def gen_new_table_id():
 @app.route("/createNewTable", methods=["POST"])
 def create_new_table():
     # Need validation here too?
-    small_blind = request.json["small_blind"]
-    big_blind = request.json["big_blind"]
-    min_buyin = request.json["min_buyin"]
-    max_buyin = request.json["max_buyin"]
-    num_seats = request.json["num_seats"]
+    small_blind = request.json["smallBlind"]
+    big_blind = request.json["bigBlind"]
+    min_buyin = request.json["minBuyin"]
+    max_buyin = request.json["maxBuyin"]
+    num_seats = request.json["numSeats"]
 
     # Validate params...
     assert num_seats in [2, 6]
@@ -140,14 +143,15 @@ def get_tables():
     # },
     tables = []
     for table_id, table_obj in TABLE_STORE.items():
+        num_players = len([seat for seat in table_obj.seats if seat is not None])
         table_info = {
-            "tableId": 456,
-            "numSeats": 6,
-            "smallBlind": 1,
-            "bigBlind": 2,
-            "minBuyin": 20,
-            "maxBuyin": 400,
-            "numPlayers": 2,
+            "tableId": table_id,
+            "numSeats": table_obj.num_seats,
+            "smallBlind": table_obj.small_blind,
+            "bigBlind": table_obj.big_blind,
+            "minBuyin": table_obj.min_buyin,
+            "maxBuyin": table_obj.max_buyin,
+            "numPlayers": num_players,
         }
         tables.append(table_info)
         print(table_id, table_obj)
