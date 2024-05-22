@@ -1,6 +1,8 @@
 import eventlet
 
 eventlet.monkey_patch()
+
+import os
 import time
 import threading
 import random
@@ -15,12 +17,21 @@ import sys
 sys.path.append("../")
 from vanillapoker import poker
 
+
+print(os.environ["HOME"])
+
 app = Flask(__name__)
-# TEMP - need to make this an environment variable
-app.config["SECRET_KEY"] = "secret!"
+app.config["SECRET_KEY"] = os.environ["SECRET_KEY"]
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app)
 
+# Database configuration
+db_config = {
+    "user": os.environ["SQL_USER"],
+    "password": os.environ["SQL_PASS"],
+    "host": os.environ["SQL_HOST"],
+    "database": os.environ["SQL_DB"],
+}
 
 # In-memory game store
 TABLE_STORE = {}
@@ -94,12 +105,11 @@ def take_action():
     table_id = str(request.json["tableId"])
     player_id = request.json["address"]
     seat_i = int(request.json["seatI"])
-    action_type_int = int(request.json["actionType"])
+    action_type = int(request.json["actionType"])
     amount = int(request.json["amount"])
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
-    action_type = poker.ActionType(action_type_int)
     poker_table_obj.take_action(action_type, player_id, amount)
     ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
@@ -207,11 +217,18 @@ def get_table():
         "maxBuyin": poker_table_obj.max_buyin,
         "players": players,
         "board": poker_table_obj.board,
-        "pot": poker_table_obj.pot,
+        "pot": poker_table_obj.pot_total,
+        "pot_initial": poker_table_obj.pot_initial,
         "button": poker_table_obj.button,
         "whoseTurn": poker_table_obj.whose_turn,
         # name is string, value is int
-        "handStage": poker_table_obj.hand_stage.value,
+        "handStage": poker_table_obj.hand_stage,
+        "facing_bet": poker_table_obj.facing_bet,
+        "last_raise": poker_table_obj.last_raise,
+        "action": {
+            "type": poker_table_obj.last_action_type,
+            "amount": poker_table_obj.hand_stage,
+        },
     }
     return jsonify({"table_info": table_info}), 200
 

@@ -1,3 +1,4 @@
+import json
 import copy
 import random
 from functools import reduce
@@ -13,28 +14,29 @@ from typing import Optional
 prime_mapping = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41]
 
 
-class HandStage(Enum):
-    SB_POST_STAGE = 0
-    BB_POST_STAGE = 1
-    HOLECARDS_DEAL = 2
-    PREFLOP_BETTING = 3
-    FLOP_DEAL = 4
-    FLOP_BETTING = 5
-    TURN_DEAL = 6
-    TURN_BETTING = 7
-    RIVER_DEAL = 8
-    RIVER_BETTING = 9
-    SHOWDOWN = 10
-    SETTLE = 11
+# class HandStage(Enum):
+# Make them ints to simplify serialization
+HS_SB_POST_STAGE = 0
+HS_BB_POST_STAGE = 1
+HS_HOLECARDS_DEAL = 2
+HS_PREFLOP_BETTING = 3
+HS_FLOP_DEAL = 4
+HS_FLOP_BETTING = 5
+HS_TURN_DEAL = 6
+HS_TURN_BETTING = 7
+HS_RIVER_DEAL = 8
+HS_RIVER_BETTING = 9
+HS_SHOWDOWN = 10
+HS_SETTLE = 11
 
 
-class ActionType(Enum):
-    SB_POST = 0
-    BB_POST = 1
-    BET = 2
-    FOLD = 3
-    CALL = 4
-    CHECK = 5
+# class ActionType(Enum):
+ACT_SB_POST = 0
+ACT_BB_POST = 1
+ACT_BET = 2
+ACT_FOLD = 3
+ACT_CALL = 4
+ACT_CHECK = 5
 
 
 @dataclass
@@ -42,10 +44,9 @@ class HandState:
     player_stack: int
     player_bet_street: int
     whose_turn: int
-    hand_stage: HandStage
-    last_action_type: ActionType
+    hand_stage: int  # HandStage
+    last_action_type: int  # ActionType
     last_action_amount: int
-    pot: int
     transition_next_street: bool
     closing_action_count: int
     facing_bet: int
@@ -62,6 +63,7 @@ class PokerTable:
     # Global hand_id - should be unique across all tables
     hand_id = 1
     lookup_table_basic_7c = {}
+    lookup_table_flush_5c = {}
 
     def __init__(
         self,
@@ -81,8 +83,9 @@ class PokerTable:
         self.seats = [None for _ in range(num_seats)]
         self.player_to_seat = {}
 
-        self.hand_stage = HandStage.PREFLOP_BETTING
-        self.pot = 0
+        self.hand_stage = HS_PREFLOP_BETTING
+        # Pot up to this point in the hand
+        self.pot_initial = 0
         self.button = 0
         self.whose_turn = 0
         self.closing_action_count = 0
@@ -96,6 +99,23 @@ class PokerTable:
         self.board = []
         # We'll pop from this array in the api
         self.events = []
+
+    @property
+    def pot_total(self):
+        """
+        Pot including all bets on current street
+        """
+        bet_street = sum([x["bet_street"] for x in self.seats if x is not None])
+        return self.pot_initial + bet_street
+
+    def serialize(self):
+        """
+        Store full game state in a way that we can stash it in a mysql table
+        """
+        return json.dumps(self.__dict__)
+
+    def deserialize(self, dat):
+        self.__dict__ = json.loads(dat)
 
     @classmethod
     def set_lookup_table_basic_7c(cls, lookup_table_basic_7c):
@@ -114,7 +134,9 @@ class PokerTable:
                 self.join_table(seat_i, deposit_amount, address)
                 break
 
-    def join_table(self, seat_i: int, deposit_amount: int, address: str):
+    def join_table(
+        self, seat_i: int, deposit_amount: int, address: str, auto_post=True
+    ):
         """
         address should be a unique identifier for that player
         """
@@ -127,7 +149,7 @@ class PokerTable:
             "address": address,
             "stack": deposit_amount,
             "in_hand": True,
-            "auto_post": False,
+            "auto_post": auto_post,
             "sitting_out": False,
             "bet_street": 0,
             "showdown_val": 8000,
@@ -145,6 +167,18 @@ class PokerTable:
                 "deposit_amount": deposit_amount,
             }
         )
+
+        # If auto post we might need to post SB or BB...
+        # TODO -
+        # Hardcoded for 2 players here
+        if auto_post and len([p for p in self.seats if p is not None]) == 2:
+            print("AUTO POSTING!!")
+            # Only post when both players have joined?
+            address_sb = self.seats[self.whose_turn]["address"]
+            # TODO - this logic will fail if seats are skipped
+            address_bb = self.seats[(self.whose_turn + 1) % self.num_seats]["address"]
+            self.take_action(ACT_SB_POST, address_sb, self.small_blind)
+            self.take_action(ACT_BB_POST, address_bb, self.big_blind)
 
     def leave_table(self, seat_i: int, address: str):
         assert self.seats[seat_i]["address"] == address, "Player not at seat!"
@@ -169,70 +203,53 @@ class PokerTable:
 
     @staticmethod
     def _transition_hand_state(
-        hs: HandState, action_type: ActionType, amount: int, num_players: int
+        hs: HandState, action_type: int, amount: int
     ) -> HandState:
-
         # Do we really need to copy this?
         hs_new = copy.deepcopy(hs)
 
-        if action_type == ActionType.SB_POST:
-            hs_new.hand_stage = ActionType.BB_POST
-            hs_new.pot += amount
+        if action_type == ACT_SB_POST:
+            hs_new.hand_stage = ACT_BB_POST
             hs_new.facing_bet = amount
             hs_new.last_raise = amount
             hs_new.whose_turn = 1 - hs.whose_turn
             hs_new.player_stack -= amount
             hs_new.player_bet_street = amount
-        elif action_type == ActionType.BB_POST:
-            hs_new.hand_stage = HandStage.HOLECARDS_DEAL
-            hs_new.pot += amount
+        elif action_type == ACT_BB_POST:
+            hs_new.hand_stage = HS_HOLECARDS_DEAL
             hs_new.facing_bet = amount
             hs_new.last_raise = amount
             hs_new.whose_turn = 1 - hs.whose_turn
             hs_new.player_stack -= amount
             hs_new.player_bet_street = amount
-        elif action_type == ActionType.BET:
+        elif action_type == ACT_BET:
             bet_amount_new = amount - hs.player_bet_street
             hs_new.player_stack -= bet_amount_new
             hs_new.player_bet_street = amount
-            hs_new.pot += bet_amount_new
             hs_new.facing_bet = amount
             hs_new.last_raise = hs.player_bet_street - hs.facing_bet
             hs_new.closing_action_count = 1
             hs_new.whose_turn = 1 - hs.whose_turn
-        elif action_type == ActionType.FOLD:
+        elif action_type == ACT_FOLD:
             # Only for two players!  Needs more work...
-            hs_new.hand_stage = HandStage.SHOWDOWN
+            hs_new.hand_stage = HS_SHOWDOWN
             hs_new.in_hand = False
             hs_new.betting_over = True
             hs_new.closing_action_count += 1
-        elif action_type == ActionType.CALL:
+        elif action_type == ACT_CALL:
             call_amount_new = hs.facing_bet - hs.player_bet_street
-            hs_new.pot += call_amount_new
             hs_new.player_stack -= call_amount_new
             # TODO
             # hardcoded for 2 players, and we need to consider empty seats...
             hs_new.whose_turn = (hs.whose_turn + 1) % 2
             hs_new.player_bet_street += call_amount_new
             hs_new.closing_action_count += 1
-        elif action_type == ActionType.CHECK:
+        elif action_type == ACT_CHECK:
             hs_new.closing_action_count += 1
             hs_new.whose_turn = (hs.whose_turn + 1) % 2
 
         hs_new.last_action_type = action_type
         hs_new.last_action_amount = amount
-
-        street_over = hs_new.closing_action_count == num_players
-        if street_over:
-            if hs.hand_stage == HandStage.PREFLOP_BETTING:
-                hs_new.hand_stage = HandStage.FLOP_DEAL
-            elif hs.hand_stage == HandStage.FLOP_BETTING:
-                hs_new.hand_stage = HandStage.TURN_DEAL
-            elif hs.hand_stage == HandStage.TURN_BETTING:
-                hs_new.hand_stage = HandStage.RIVER_DEAL
-            elif hs.hand_stage == HandStage.RIVER_BETTING:
-                hs_new.hand_stage = HandStage.SHOWDOWN
-            hs_new.transition_next_street = True
 
         return hs_new
 
@@ -250,23 +267,23 @@ class PokerTable:
                 )
 
     def _deal_boardcards(self):
-        if self.hand_stage == HandStage.FLOP_DEAL:
+        if self.hand_stage == HS_FLOP_DEAL:
             self.board = self.deck[0:3]
             self.events.append(
                 {"tag": "cards", "card_type": "flop", "cards": self.deck[0:3]}
             )
-        elif self.hand_stage == HandStage.TURN_DEAL:
+        elif self.hand_stage == HS_TURN_DEAL:
             self.board = self.deck[:4]
             self.events.append(
                 {"tag": "cards", "card_type": "turn", "cards": self.deck[3:4]}
             )
-        elif self.hand_stage == HandStage.RIVER_DEAL:
+        elif self.hand_stage == HS_RIVER_DEAL:
             self.board = self.deck[:5]
             self.events.append(
                 {"tag": "cards", "card_type": "river", "cards": self.deck[4:5]}
             )
 
-    def take_action(self, action_type: ActionType, address: str, amount: int):
+    def take_action(self, action_type: int, address: str, amount: int):
         seat_i = self.player_to_seat[address]
         assert seat_i == self.whose_turn, "Not player's turn!"
 
@@ -283,7 +300,6 @@ class PokerTable:
             hand_stage=self.hand_stage,
             last_action_type=self.last_action_type,
             last_action_amount=self.last_action_amount,
-            pot=self.pot,
             transition_next_street=False,
             closing_action_count=self.closing_action_count,
             facing_bet=self.facing_bet,
@@ -293,7 +309,20 @@ class PokerTable:
 
         # We actually need num players active on this street
         num_players = sum([1 for player in self.seats if player is not None])
-        hs_new = self._transition_hand_state(hs, action_type, amount, num_players)
+        hs_new = self._transition_hand_state(hs, action_type, amount)
+
+        street_over = hs_new.closing_action_count == num_players
+        if street_over:
+            self.pot_initial = self.pot_total
+            if hs.hand_stage == HS_PREFLOP_BETTING:
+                hs_new.hand_stage = HS_FLOP_DEAL
+            elif hs.hand_stage == HS_FLOP_BETTING:
+                hs_new.hand_stage = HS_TURN_DEAL
+            elif hs.hand_stage == HS_TURN_BETTING:
+                hs_new.hand_stage = HS_RIVER_DEAL
+            elif hs.hand_stage == HS_RIVER_BETTING:
+                hs_new.hand_stage = HS_SHOWDOWN
+            hs_new.transition_next_street = True
 
         # At this stage we might need to:
         # Deal cards
@@ -303,26 +332,26 @@ class PokerTable:
         # And finally we'll want to update hand state
 
         next_hand = False
-        if hs_new.hand_stage == HandStage.HOLECARDS_DEAL:
+        if hs_new.hand_stage == HS_HOLECARDS_DEAL:
             self._deal_holecards()
-            hs_new.hand_stage = HandStage.PREFLOP_BETTING
-        elif hs_new.hand_stage == HandStage.FLOP_DEAL:
+            hs_new.hand_stage = HS_PREFLOP_BETTING
+        elif hs_new.hand_stage == HS_FLOP_DEAL:
             self._deal_boardcards()
-            hs_new.hand_stage = HandStage.FLOP_BETTING
-        elif hs_new.hand_stage == HandStage.TURN_DEAL:
+            hs_new.hand_stage = HS_FLOP_BETTING
+        elif hs_new.hand_stage == HS_TURN_DEAL:
             self._deal_boardcards()
-            hs_new.hand_stage = HandStage.TURN_BETTING
-        elif hs_new.hand_stage == HandStage.RIVER_DEAL:
+            hs_new.hand_stage = HS_TURN_BETTING
+        elif hs_new.hand_stage == HS_RIVER_DEAL:
             self._deal_boardcards()
-            hs_new.hand_stage = HandStage.RIVER_BETTING
-        elif hs_new.hand_stage == HandStage.SHOWDOWN:
+            hs_new.hand_stage = HS_RIVER_BETTING
+        elif hs_new.hand_stage == HS_SHOWDOWN:
             self._showdown()
             self._settle()
             # Increment to next hand...
             # self._next_hand()
             next_hand = True
-        elif hs_new.hand_stage == HandStage.SETTLE:
-            hs_new.hand_stage = HandStage.RIVER_BETTING
+        elif hs_new.hand_stage == HS_SETTLE:
+            hs_new.hand_stage = HS_RIVER_BETTING
             self._settle()
             # Increment to next hand...
             self._next_hand()
@@ -331,14 +360,14 @@ class PokerTable:
         # And now update state...
         self.seats[seat_i]["stack"] = hs_new.player_stack
         self.seats[seat_i]["bet_street"] = hs_new.player_bet_street
-        self.seats[seat_i]["last_action_type"] = action_type.value
+        self.seats[seat_i]["last_action_type"] = action_type
         self.seats[seat_i]["last_amount"] = amount
 
         self.whose_turn = hs_new.whose_turn
         self.hand_stage = hs_new.hand_stage
         self.last_action_type = hs_new.last_action_type
         self.last_action_amount = hs_new.last_action_amount
-        self.pot = self.pot
+        # self.pot = self.pot
         self.closing_action_count = hs_new.closing_action_count
         self.facing_bet = hs_new.facing_bet
         self.last_raise = hs_new.last_raise
@@ -354,14 +383,15 @@ class PokerTable:
         # -so how do we cleanly access any final event in API?
         action = {
             "tag": "gameState",
-            "pot": self.pot,
+            "pot_initial": self.pot_initial,
+            "pot": self.pot_total,
             "stackP0": self.seats[0]["stack"],
             "stackP1": self.seats[1]["stack"],
             "playerBetStreetP0": self.seats[0]["bet_street"],
             "playerBetStreetP1": self.seats[1]["bet_street"],
             "button": self.button,
             # And info about actual action that was taken?
-            "action_type": action_type.value,
+            "action_type": action_type,
             "amount": amount,
             "address": address,
         }
@@ -409,6 +439,7 @@ class PokerTable:
         This will only be called if we get to showdown
         For all players still in the hand, calculate their showdown value and store it
         """
+        return 33
         for player in self.seats:
             if player is not None and player["in_hand"]:
                 player["showdown_val"] = self._get_showdown_val([], [])
@@ -428,8 +459,8 @@ class PokerTable:
                 player["last_amount"] = None
 
     def _next_hand(self):
-        self.hand_stage = HandStage.PREFLOP_BETTING
-        self.pot = 0
+        self.hand_stage = HS_PREFLOP_BETTING
+        self.pot_initial = 0
         self.button = (self.button + 1) % self.num_seats
         self.whose_turn = (self.whose_turn + 1) % self.num_seats
         self.closing_action_count = 0
