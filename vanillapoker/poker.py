@@ -1,9 +1,16 @@
 import copy
 import random
+from functools import reduce
 from enum import Enum
 from typing import List, Tuple
 from dataclasses import dataclass
 from typing import Optional
+
+
+# First 13 prime numbers
+# Multiply them together to get a unique value, which we can use to
+# evaluate hand strength using a lookup table
+prime_mapping = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41]
 
 
 class HandStage(Enum):
@@ -54,6 +61,7 @@ class PokerTable:
 
     # Global hand_id - should be unique across all tables
     hand_id = 1
+    lookup_table_basic_7c = {}
 
     def __init__(
         self,
@@ -90,6 +98,10 @@ class PokerTable:
         self.events = []
 
     @classmethod
+    def set_lookup_table_basic_7c(cls, lookup_table_basic_7c):
+        cls.lookup_table_basic_7c = lookup_table_basic_7c
+
+    @classmethod
     def increment_hand_id(cls):
         cls.hand_id += 1
 
@@ -107,6 +119,7 @@ class PokerTable:
         address should be a unique identifier for that player
         """
         assert self.seats[seat_i] == None, "seat_i taken!"
+        assert address not in self.player_to_seat, "Player already joined!"
         assert (
             self.min_buyin <= deposit_amount <= self.max_buyin
         ), "Invalid deposit amount!"
@@ -374,8 +387,18 @@ class PokerTable:
             # TODO - can we have floating point errors here?  Should we round?
             self.seats[seat_i]["stack"] += self.pot / num_winners
 
-    def _get_showdown_val(self, hole_cards, community_cards):
-        return 123
+    def _get_showdown_val(self, holecards, boardcards):
+        """
+        Showdown value
+        """
+        cards = holecards + boardcards
+        assert len(cards) == 7
+        # First get non-flush lookup value
+        primes = [prime_mapping[x % 13] for x in cards]
+        lookup_val = reduce(lambda x, y: x * y, primes)
+        # Check for a flush too...
+
+        return lookup_val
 
     def _showdown(self):
         """
