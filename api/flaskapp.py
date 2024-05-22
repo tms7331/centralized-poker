@@ -94,12 +94,12 @@ def take_action():
     table_id = str(request.json["tableId"])
     player_id = request.json["address"]
     seat_i = int(request.json["seatI"])
-    action_type = int(request.json["actionType"])
+    action_type_int = int(request.json["actionType"])
     amount = int(request.json["amount"])
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
-    # TODO - cast action_type to ActionType enum
+    action_type = poker.ActionType(action_type_int)
     poker_table_obj.take_action(action_type, player_id, amount)
     ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
