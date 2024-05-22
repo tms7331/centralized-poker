@@ -48,7 +48,7 @@ def ping_loop():
 
 @app.route("/joinTable", methods=["POST"])
 def join_table():
-    table_id = request.json["tableId"]
+    table_id = str(request.json["tableId"])
     player_id = request.json["address"]
     deposit_amount = request.json["depositAmount"]
     seat_i = request.json["seatI"]
@@ -64,7 +64,7 @@ def join_table():
 
 @app.route("/leaveTable", methods=["POST"])
 def leave_table():
-    table_id = request.json["tableId"]
+    table_id = str(request.json["tableId"])
     player_id = request.json["address"]
     seat_i = request.json["seatI"]
     if table_id not in TABLE_STORE:
@@ -77,7 +77,7 @@ def leave_table():
 
 @app.route("/rebuy", methods=["POST"])
 def rebuy():
-    table_id = request.json["tableId"]
+    table_id = str(request.json["tableId"])
     player_id = request.json["address"]
     rebuy_amount = request.json["rebuyAmount"]
     seat_i = request.json["seatI"]
@@ -91,7 +91,7 @@ def rebuy():
 
 @app.route("/takeAction", methods=["POST"])
 def take_action():
-    table_id = request.json["tableId"]
+    table_id = str(request.json["tableId"])
     player_id = request.json["address"]
     seat_i = request.json["seatI"]
     action_type = request.json["actionType"]
@@ -170,7 +170,7 @@ def get_tables():
 
 @app.route("/getTable", methods=["GET"])
 def get_table():
-    table_id = request.args.get("table_id")
+    table_id = str(request.args.get("table_id"))
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
 
