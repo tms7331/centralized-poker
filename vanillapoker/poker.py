@@ -164,7 +164,7 @@ class PokerTable:
                 "tag": "rebuy",
                 "player": address,
                 "seat": seat_i,
-                "deposit_amount": deposit_amount,
+                "depositAmount": deposit_amount,
             }
         )
 
@@ -197,7 +197,7 @@ class PokerTable:
                 "tag": "rebuy",
                 "player": address,
                 "seat": seat_i,
-                "rebuy_amount": rebuy_amount,
+                "rebuyAmount": rebuy_amount,
             }
         )
 
@@ -263,24 +263,24 @@ class PokerTable:
                 cards = self.deck[start_i : start_i + 2]
                 self.seats[seat_i]["holecards"] = cards
                 self.events.append(
-                    {"tag": "cards", "card_type": f"p{seat_i}", "cards": cards}
+                    {"tag": "cards", "cardType": f"p{seat_i}", "cards": cards}
                 )
 
     def _deal_boardcards(self):
         if self.hand_stage == HS_FLOP_DEAL:
             self.board = self.deck[0:3]
             self.events.append(
-                {"tag": "cards", "card_type": "flop", "cards": self.deck[0:3]}
+                {"tag": "cards", "cardType": "flop", "cards": self.deck[0:3]}
             )
         elif self.hand_stage == HS_TURN_DEAL:
             self.board = self.deck[:4]
             self.events.append(
-                {"tag": "cards", "card_type": "turn", "cards": self.deck[3:4]}
+                {"tag": "cards", "cardType": "turn", "cards": self.deck[3:4]}
             )
         elif self.hand_stage == HS_RIVER_DEAL:
             self.board = self.deck[:5]
             self.events.append(
-                {"tag": "cards", "card_type": "river", "cards": self.deck[4:5]}
+                {"tag": "cards", "cardType": "river", "cards": self.deck[4:5]}
             )
 
     def take_action(self, action_type: int, address: str, amount: int):
@@ -383,7 +383,7 @@ class PokerTable:
         # -so how do we cleanly access any final event in API?
         action = {
             "tag": "gameState",
-            "pot_initial": self.pot_initial,
+            "potInitial": self.pot_initial,
             "pot": self.pot_total,
             "stackP0": self.seats[0]["stack"],
             "stackP1": self.seats[1]["stack"],
@@ -391,7 +391,7 @@ class PokerTable:
             "playerBetStreetP1": self.seats[1]["bet_street"],
             "button": self.button,
             # And info about actual action that was taken?
-            "action_type": action_type,
+            "actionType": action_type,
             "amount": amount,
             "address": address,
         }

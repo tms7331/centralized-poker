@@ -6,9 +6,11 @@ import os
 import time
 import threading
 import random
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
+import mysql.connector
 import threading
 import time
 
@@ -17,8 +19,8 @@ import sys
 sys.path.append("../")
 from vanillapoker import poker
 
-
-print(os.environ["HOME"])
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ["SECRET_KEY"]
@@ -35,6 +37,46 @@ db_config = {
 
 # In-memory game store
 TABLE_STORE = {}
+
+
+# Initialize database connection
+def get_db_connection():
+    return mysql.connector.connect(**db_config)
+
+
+# Create a table (if it doesn't exist)
+def init_db():
+    print("Initializing db...")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS poker_table_cache (
+            table_id VARCHAR(10) NOT NULL,
+            table_data TEXT NOT NULL,
+            PRIMARY KEY (table_id)
+        );
+    """
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+@app.route("/add_user", methods=["POST"])
+def add_user():
+    print("Adding user...")
+    name = request.json["name"]
+    email = request.json["email"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO users (name, email) VALUES (%s, %s)", (name, email))
+    conn.commit()
+    user_id = cursor.lastrowid
+    cursor.close()
+    conn.close()
+    return jsonify({"id": user_id, "name": name, "email": email}), 201
 
 
 @socketio.on("connect")
@@ -218,13 +260,13 @@ def get_table():
         "players": players,
         "board": poker_table_obj.board,
         "pot": poker_table_obj.pot_total,
-        "pot_initial": poker_table_obj.pot_initial,
+        "potInitial": poker_table_obj.pot_initial,
         "button": poker_table_obj.button,
         "whoseTurn": poker_table_obj.whose_turn,
         # name is string, value is int
         "handStage": poker_table_obj.hand_stage,
-        "facing_bet": poker_table_obj.facing_bet,
-        "last_raise": poker_table_obj.last_raise,
+        "facingBet": poker_table_obj.facing_bet,
+        "lastRaise": poker_table_obj.last_raise,
         "action": {
             "type": poker_table_obj.last_action_type,
             "amount": poker_table_obj.hand_stage,
@@ -241,6 +283,7 @@ def ws_emit_actions(table_id, poker_table_obj):
 
 
 if __name__ == "__main__":
+    init_db()
     # Start the background thread when the server starts
     thread = threading.Thread(target=ping_loop)
     thread.daemon = True
