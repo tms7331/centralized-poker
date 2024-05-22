@@ -361,7 +361,7 @@ class PokerTable:
             "playerBetStreetP1": self.seats[1]["bet_street"],
             "button": self.button,
             # And info about actual action that was taken?
-            "action_type": action_type,
+            "action_type": action_type.value,
             "amount": amount,
             "address": address,
         }
