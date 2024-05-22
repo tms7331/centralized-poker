@@ -50,8 +50,8 @@ def ping_loop():
 def join_table():
     table_id = str(request.json["tableId"])
     player_id = request.json["address"]
-    deposit_amount = request.json["depositAmount"]
-    seat_i = request.json["seatI"]
+    deposit_amount = int(request.json["depositAmount"])
+    seat_i = int(request.json["seatI"])
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
@@ -66,7 +66,7 @@ def join_table():
 def leave_table():
     table_id = str(request.json["tableId"])
     player_id = request.json["address"]
-    seat_i = request.json["seatI"]
+    seat_i = int(request.json["seatI"])
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
@@ -79,8 +79,8 @@ def leave_table():
 def rebuy():
     table_id = str(request.json["tableId"])
     player_id = request.json["address"]
-    rebuy_amount = request.json["rebuyAmount"]
-    seat_i = request.json["seatI"]
+    rebuy_amount = int(request.json["rebuyAmount"])
+    seat_i = int(request.json["seatI"])
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
@@ -93,12 +93,13 @@ def rebuy():
 def take_action():
     table_id = str(request.json["tableId"])
     player_id = request.json["address"]
-    seat_i = request.json["seatI"]
-    action_type = request.json["actionType"]
-    amount = request.json["amount"]
+    seat_i = int(request.json["seatI"])
+    action_type = int(request.json["actionType"])
+    amount = int(request.json["amount"])
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
+    # TODO - cast action_type to ActionType enum
     poker_table_obj.take_action(action_type, player_id, amount)
     ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
