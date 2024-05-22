@@ -5,6 +5,7 @@ eventlet.monkey_patch()
 import os
 import time
 import threading
+import json
 import random
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify
@@ -287,8 +288,21 @@ def ws_emit_actions(table_id, poker_table_obj):
         socketio.emit(table_id, event)
 
 
+def load_lookup_tables():
+    with open("lookup_table_flushes.json", "r") as f:
+        lookup_table_flush_5c = json.loads(f.read())
+
+    with open("lookup_table_basic_7c.json", "r") as f:
+        lookup_table_basic_7c = json.loads(f.read())
+
+    return lookup_table_flush_5c, lookup_table_basic_7c
+
+
 if __name__ == "__main__":
     init_db()
+    lookup_table_flush_5c, lookup_table_basic_7c = load_lookup_tables()
+    poker.set_lookup_tables(lookup_table_basic_7c, lookup_table_flush_5c)
+
     # cached_tables = retrieve_tables()
     # for table in cached_tables:
     #     TABLE_STORE[table["table_id"]] = poker.PokerTable.deserialize(

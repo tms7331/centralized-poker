@@ -1,4 +1,5 @@
 import json
+import itertools
 import copy
 import random
 from functools import reduce
@@ -6,7 +7,7 @@ from enum import Enum
 from typing import List, Tuple
 from dataclasses import dataclass
 from typing import Optional
-import pokerutils
+from vanillapoker import pokerutils
 
 
 # First 13 prime numbers
@@ -119,8 +120,9 @@ class PokerTable:
         self.__dict__ = json.loads(dat)
 
     @classmethod
-    def set_lookup_table_basic_7c(cls, lookup_table_basic_7c):
+    def set_lookup_tables(cls, lookup_table_basic_7c, lookup_table_flush_5c):
         cls.lookup_table_basic_7c = lookup_table_basic_7c
+        cls.lookup_table_flush_5c = lookup_table_flush_5c
 
     @classmethod
     def increment_hand_id(cls):
@@ -428,16 +430,26 @@ class PokerTable:
             # TODO - can we have floating point errors here?  Should we round?
             self.seats[seat_i]["stack"] += self.pot / num_winners
 
-    def _get_showdown_val(self, holecards, boardcards):
+    def _get_showdown_val(self, cards):
         """
         Showdown value
         """
-        cards = holecards + boardcards
         assert len(cards) == 7
         # First get non-flush lookup value
         primes = [prime_mapping[x % 13] for x in cards]
-        lookup_val = reduce(lambda x, y: x * y, primes)
+        hand_val = reduce(lambda x, y: x * y, primes)
+        lookup_val = self.lookup_table_basic_7c[hand_val]
+
         # Check for a flush too...
+        for suit in range(4):
+            matches = [x % 13 for x in cards if x // 13 == suit]
+            if len(matches) >= 5:
+                # Can have different combinations of 5 cards
+                combos = itertools.combinations(matches, 5)
+                for c in combos:
+                    hand_val = reduce(lambda x, y: x * y, c)
+                    lookup_val_ = self.lookup_table_flush_5c[hand_val]
+                    lookup_val = min(lookup_val, lookup_val_)
 
         return lookup_val
 
@@ -446,10 +458,10 @@ class PokerTable:
         This will only be called if we get to showdown
         For all players still in the hand, calculate their showdown value and store it
         """
-        return 33
         for player in self.seats:
             if player is not None and player["in_hand"]:
-                player["showdown_val"] = self._get_showdown_val([], [])
+                holecards = player["holecards"]
+                player["showdown_val"] = self._get_showdown_val(holecards + self.board)
 
     def _next_street(self):
         # TODO - this is hardcoded for 2p
