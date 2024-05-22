@@ -6,6 +6,7 @@ from enum import Enum
 from typing import List, Tuple
 from dataclasses import dataclass
 from typing import Optional
+import pokerutils
 
 
 # First 13 prime numbers
@@ -161,7 +162,7 @@ class PokerTable:
 
         self.events.append(
             {
-                "tag": "rebuy",
+                "tag": "joinTable",
                 "player": address,
                 "seat": seat_i,
                 "depositAmount": deposit_amount,
@@ -382,19 +383,24 @@ class PokerTable:
         # TODO -
         # we'll clear out events when we transition to nex<t hand
         # -so how do we cleanly access any final event in API?
+        # stack_arr = [x["stack"] for x in self.seats if x is not None else None]
+
+        players = [pokerutils.build_player_data(seat) for seat in self.seats]
         action = {
             "tag": "gameState",
             "potInitial": self.pot_initial,
             "pot": self.pot_total,
-            "stackP0": self.seats[0]["stack"],
-            "stackP1": self.seats[1]["stack"],
-            "playerBetStreetP0": self.seats[0]["bet_street"],
-            "playerBetStreetP1": self.seats[1]["bet_street"],
+            "players": players,
             "button": self.button,
-            # And info about actual action that was taken?
-            "actionType": action_type,
-            "amount": amount,
-            "address": address,
+            "whoseTurn": self.whose_turn,
+            "board": self.board,
+            "handStage": self.hand_stage,
+            "facingBet": self.facing_bet,
+            "lastRaise": self.last_raise,
+            "action": {
+                "type": action_type,
+                "amount": amount,
+            },
         }
         self.events.append(action)
 

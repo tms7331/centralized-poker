@@ -17,7 +17,7 @@ import time
 import sys
 
 sys.path.append("../")
-from vanillapoker import poker
+from vanillapoker import poker, pokerutils
 
 # Load environment variables from .env file
 load_dotenv()
@@ -63,20 +63,29 @@ def init_db():
     conn.close()
 
 
-@app.route("/add_user", methods=["POST"])
-def add_user():
-    print("Adding user...")
-    name = request.json["name"]
-    email = request.json["email"]
-
+def store_table(table_id, table_serialized):
+    """
+    Store a serialized poker table in our database
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO users (name, email) VALUES (%s, %s)", (name, email))
+    cursor.execute(
+        "INSERT INTO poker_table_cache (table_id, table_data) VALUES (%s, %s)",
+        (table_id, table_serialized),
+    )
     conn.commit()
-    user_id = cursor.lastrowid
     cursor.close()
     conn.close()
-    return jsonify({"id": user_id, "name": name, "email": email}), 201
+
+
+def retrieve_tables():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    data = cursor.execute("SELECT * FROM poker_table_cache;")
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return data
 
 
 @socketio.on("connect")
@@ -152,8 +161,15 @@ def take_action():
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
+    start_hand_stage = poker_table_obj.hand_stage
     poker_table_obj.take_action(action_type, player_id, amount)
     ws_emit_actions(table_id, poker_table_obj)
+
+    # Only cache if we completed a hand!
+    end_hand_stage = poker_table_obj.hand_stage
+    if end_hand_stage < start_hand_stage:
+        store_table(table_id, poker_table_obj.serialize())
+
     return jsonify({"success": True}), 200
 
 
@@ -186,6 +202,9 @@ def create_new_table():
     )
     table_id = gen_new_table_id()
     TABLE_STORE[table_id] = poker_table_obj
+
+    # And cache it!
+    store_table(table_id, poker_table_obj.serialize())
 
     # Does this make sense?  Returning null response for all others
     return jsonify({"tableId": table_id}), 200
@@ -221,25 +240,6 @@ def get_tables():
     return jsonify({"tables": tables}), 200
 
 
-def _build_player_data(seat):
-    if seat is None:
-        return None
-    return {
-        "address": seat["address"],
-        "stack": seat["stack"],
-        "inHand": seat["in_hand"],
-        # "autoPost": seat["auto_post"],
-        "sittingOut": seat["sitting_out"],
-        "betStreet": seat["bet_street"],
-        # "showdownVal": seat["showdown_val"],
-        "holecards": seat["holecards"],
-        "action": {
-            "type": seat["last_action_type"],
-            "amount": seat["last_amount"],
-        },
-    }
-
-
 @app.route("/getTable", methods=["GET"])
 def get_table():
     table_id = str(request.args.get("table_id"))
@@ -248,7 +248,12 @@ def get_table():
 
     poker_table_obj = TABLE_STORE[table_id]
 
-    players = [_build_player_data(seat) for seat in poker_table_obj.seats]
+    players = [pokerutils.build_player_data(seat) for seat in poker_table_obj.seats]
+
+    print("SENDING BOARD!!!!")
+    print(table_id)
+    print(poker_table_obj.board)
+    print("-----------------")
 
     table_info = {
         "tableId": table_id,
@@ -284,6 +289,12 @@ def ws_emit_actions(table_id, poker_table_obj):
 
 if __name__ == "__main__":
     init_db()
+    # cached_tables = retrieve_tables()
+    # for table in cached_tables:
+    #     TABLE_STORE[table["table_id"]] = poker.PokerTable.deserialize(
+    #         table["table_data"]
+    #     )
+
     # Start the background thread when the server starts
     thread = threading.Thread(target=ping_loop)
     thread.daemon = True
