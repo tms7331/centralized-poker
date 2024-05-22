@@ -172,7 +172,6 @@ class PokerTable:
         # TODO -
         # Hardcoded for 2 players here
         if auto_post and len([p for p in self.seats if p is not None]) == 2:
-            print("AUTO POSTING!!")
             # Only post when both players have joined?
             address_sb = self.seats[self.whose_turn]["address"]
             # TODO - this logic will fail if seats are skipped
@@ -266,22 +265,24 @@ class PokerTable:
                     {"tag": "cards", "cardType": f"p{seat_i}", "cards": cards}
                 )
 
-    def _deal_boardcards(self):
-        if self.hand_stage == HS_FLOP_DEAL:
+    def _deal_boardcards(self, hs_new_hand_stage):
+        if hs_new_hand_stage == HS_FLOP_DEAL:
             self.board = self.deck[0:3]
             self.events.append(
                 {"tag": "cards", "cardType": "flop", "cards": self.deck[0:3]}
             )
-        elif self.hand_stage == HS_TURN_DEAL:
+        elif hs_new_hand_stage == HS_TURN_DEAL:
             self.board = self.deck[:4]
             self.events.append(
                 {"tag": "cards", "cardType": "turn", "cards": self.deck[3:4]}
             )
-        elif self.hand_stage == HS_RIVER_DEAL:
+        elif hs_new_hand_stage == HS_RIVER_DEAL:
             self.board = self.deck[:5]
             self.events.append(
                 {"tag": "cards", "cardType": "river", "cards": self.deck[4:5]}
             )
+        else:
+            raise ValueError("Invalid hand stage")
 
     def take_action(self, action_type: int, address: str, amount: int):
         seat_i = self.player_to_seat[address]
@@ -332,18 +333,18 @@ class PokerTable:
         # And finally we'll want to update hand state
 
         next_hand = False
+
         if hs_new.hand_stage == HS_HOLECARDS_DEAL:
             self._deal_holecards()
-            hs_new.hand_stage = HS_PREFLOP_BETTING
-        elif hs_new.hand_stage == HS_FLOP_DEAL:
-            self._deal_boardcards()
-            hs_new.hand_stage = HS_FLOP_BETTING
-        elif hs_new.hand_stage == HS_TURN_DEAL:
-            self._deal_boardcards()
-            hs_new.hand_stage = HS_TURN_BETTING
-        elif hs_new.hand_stage == HS_RIVER_DEAL:
-            self._deal_boardcards()
-            hs_new.hand_stage = HS_RIVER_BETTING
+            hs_new.hand_stage += 1
+        if hs_new.hand_stage in [
+            HS_FLOP_DEAL,
+            HS_TURN_DEAL,
+            HS_RIVER_DEAL,
+        ]:
+            self._deal_boardcards(hs_new.hand_stage)
+            # This will increment to a BETTING stage
+            hs_new.hand_stage += 1
         elif hs_new.hand_stage == HS_SHOWDOWN:
             self._showdown()
             self._settle()
@@ -468,6 +469,7 @@ class PokerTable:
         self.last_raise = 0
         self.last_action_type = None
         self.last_action_amount = 0
+        self.board = []
 
         self.deck = list(range(52))
 
