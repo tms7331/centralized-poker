@@ -181,8 +181,10 @@ def _build_player_data(seat):
         "betStreet": seat["bet_street"],
         # "showdownVal": seat["showdown_val"],
         "holecards": seat["holecards"],
-        "lastActionType": seat["last_action_type"],
-        "lastAmount": seat["last_amount"],
+        "action": {
+            "type": seat["last_action_type"],
+            "amount": seat["last_amount"],
+        },
     }
 
 
