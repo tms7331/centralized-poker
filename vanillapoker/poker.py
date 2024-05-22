@@ -132,6 +132,8 @@ class PokerTable:
             "bet_street": 0,
             "showdown_val": 8000,
             "holecards": [],
+            "last_action_type": None,
+            "last_amount": None,
         }
         self.player_to_seat[address] = seat_i
 
@@ -329,6 +331,8 @@ class PokerTable:
         # And now update state...
         self.seats[seat_i]["stack"] = hs_new.player_stack
         self.seats[seat_i]["bet_street"] = hs_new.player_bet_street
+        self.seats[seat_i]["last_action_type"] = action_type.value
+        self.seats[seat_i]["last_amount"] = amount
 
         self.whose_turn = hs_new.whose_turn
         self.hand_stage = hs_new.hand_stage
@@ -416,6 +420,12 @@ class PokerTable:
         self.last_raise = 0
         self.last_action_type = None
         self.last_action_amount = 0
+
+        # Reset player actions
+        for player in self.seats:
+            if player is not None:
+                player["last_action_type"] = None
+                player["last_amount"] = None
 
     def _next_hand(self):
         self.hand_stage = HandStage.PREFLOP_BETTING

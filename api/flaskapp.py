@@ -122,7 +122,7 @@ def create_new_table():
     num_seats = request.json["numSeats"]
 
     # Validate params...
-    assert num_seats in [2, 6]
+    assert num_seats in [2, 6, 9]
     assert big_blind == small_blind * 2
     # Min_buyin
     assert 10 * big_blind <= min_buyin <= 400 * big_blind
@@ -169,6 +169,23 @@ def get_tables():
     return jsonify({"tables": tables}), 200
 
 
+def _build_player_data(seat):
+    if seat is None:
+        return None
+    return {
+        "address": seat["address"],
+        "stack": seat["stack"],
+        "inHand": seat["in_hand"],
+        "autoPost": seat["auto_post"],
+        "sittingOut": seat["sitting_out"],
+        "betStreet": seat["bet_street"],
+        "showdownVal": seat["showdown_val"],
+        "holecards": seat["holecards"],
+        "lastActionType": seat["last_action_type"],
+        "lastAmount": seat["last_amount"],
+    }
+
+
 @app.route("/getTable", methods=["GET"])
 def get_table():
     table_id = str(request.args.get("table_id"))
@@ -177,28 +194,7 @@ def get_table():
 
     poker_table_obj = TABLE_STORE[table_id]
 
-    fake_players = [
-        {
-            "address": "0x123",
-            "stack": 88,
-            "in_hand": True,
-            "auto_post": False,
-            "sitting_out": False,
-            "bet_street": 17,
-            "showdown_val": 8000,
-            "holecards": [],
-        },
-        {
-            "address": "0x456",
-            "stack": 45,
-            "in_hand": True,
-            "auto_post": False,
-            "sitting_out": False,
-            "bet_street": 12,
-            "showdown_val": 8000,
-            "holecards": [],
-        },
-    ]
+    players = [_build_player_data(seat) for seat in poker_table_obj.seats]
 
     table_info = {
         "tableId": table_id,
@@ -207,7 +203,7 @@ def get_table():
         "bigBlind": poker_table_obj.big_blind,
         "minBuyin": poker_table_obj.min_buyin,
         "maxBuyin": poker_table_obj.max_buyin,
-        "players": fake_players,  # poker_table_obj.seats,
+        "players": players,
         "board": poker_table_obj.board,
         "pot": poker_table_obj.pot,
         "button": poker_table_obj.button,
@@ -221,6 +217,7 @@ def get_table():
 def ws_emit_actions(table_id, poker_table_obj):
     while poker_table_obj.events:
         event = poker_table_obj.events.pop(0)
+        print("EMITTING EVENT", event)
         socketio.emit(table_id, event)
 
 
