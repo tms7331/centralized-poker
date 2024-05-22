@@ -476,6 +476,7 @@ class PokerTable:
             if player is not None:
                 player["last_action_type"] = None
                 player["last_amount"] = None
+                player["bet_street"] = 0
 
     def _next_hand(self):
         self.hand_stage = HS_PREFLOP_BETTING
