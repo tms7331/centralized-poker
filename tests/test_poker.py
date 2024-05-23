@@ -129,9 +129,10 @@ def test_fold_ends_hand(t):
     t.join_table(1, 100, p1)
     t.take_action(poker.ACT_FOLD, p0, 0)
 
-    # Should have credited player 2 with the pot
-    assert t.seats[0]["stack"] == 99
-    assert t.seats[1]["stack"] == 101
+    # Should have credited player 2 with the pot, but then posted blinds
+    assert t.button == 1
+    assert t.seats[0]["stack"] == (99 - 2)
+    assert t.seats[1]["stack"] == (101 - 1)
 
     assert t.hand_stage == poker.HS_PREFLOP_BETTING
 

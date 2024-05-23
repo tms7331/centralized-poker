@@ -246,12 +246,7 @@ class PokerTable:
             # For bets it reopens action
             hs_new.closing_action_count = 1
         elif action_type == ACT_FOLD:
-            # Only for two players!  Needs more work...
-            hs_new.hand_stage = HS_SHOWDOWN
-            hs_new.in_hand = False
-            hs_new.betting_over = True
-            # Do NOT increment here - player is just no longer active
-            # hs_new.closing_action_count += 1
+            pass
         elif action_type == ACT_CALL:
             call_amount_new = hs.facing_bet - hs.player_bet_street
             hs_new.player_stack -= call_amount_new
@@ -322,6 +317,10 @@ class PokerTable:
 
         hs_new = self._transition_hand_state(hs, action_type, amount)
 
+        # If they fold - they're no longer in the hand
+        if action_type == ACT_FOLD:
+            self.seats[seat_i]["in_hand"] = False
+
         street_over = hs_new.closing_action_count == self.num_active_players
         if street_over:
             self.pot_initial = self.pot_total
@@ -335,6 +334,10 @@ class PokerTable:
                 hs_new.hand_stage = HS_SHOWDOWN
             hs_new.transition_next_street = True
 
+        # Overwrite previous logic
+        if self.num_active_players == 1:
+            hs_new.hand_stage = HS_SHOWDOWN
+
         # At this stage we might need to:
         # Deal cards
         # Showdown
@@ -347,7 +350,7 @@ class PokerTable:
         if hs_new.hand_stage == HS_HOLECARDS_DEAL:
             self._deal_holecards()
             hs_new.hand_stage += 1
-        if hs_new.hand_stage in [
+        elif hs_new.hand_stage in [
             HS_FLOP_DEAL,
             HS_TURN_DEAL,
             HS_RIVER_DEAL,
@@ -477,17 +480,28 @@ class PokerTable:
         For all players still in the hand, calculate their showdown value and store it
         """
         action = {"tag": "showdown", "cards": [], "handStrs": []}
-        for player in self.seats:
-            if player is not None and player["in_hand"]:
-                holecards = player["holecards"]
-                player["showdown_val"] = self._get_showdown_val(holecards + self.board)
-                action["cards"].append(player["holecards"])
-                action["handStrs"].append("Placeholder-Flush")
-            else:
-                action["cards"].append([])
-                action["handStrs"].append("")
 
-        self.events.append(action)
+        # If everyone else folded - no lookups!
+        # Otherwise their showdown_vals should still be at 8000
+        still_in_hand = [p for p in self.seats if p is not None and p["in_hand"]]
+        if len(still_in_hand) == 1:
+            # This will award full pot to them
+            still_in_hand[0]["showdown_val"] = 0
+        else:
+            for player in self.seats:
+                if player is not None and player["in_hand"]:
+                    holecards = player["holecards"]
+                    player["showdown_val"] = self._get_showdown_val(
+                        holecards + self.board
+                    )
+                    action["cards"].append(player["holecards"])
+                    action["handStrs"].append("Placeholder-Flush")
+                else:
+                    action["cards"].append([])
+                    action["handStrs"].append("")
+
+            # Only send showdown event if we had a real showdown
+            self.events.append(action)
 
     def _next_street(self):
         # TODO - this is hardcoded for 2p
@@ -510,9 +524,6 @@ class PokerTable:
         self.hand_stage = HS_SB_POST_STAGE
         self.pot_initial = 0
 
-        self._increment_button()
-        self.whose_turn = self.button
-
         self.closing_action_count = 0
         self.facing_bet = 0
         self.last_raise = 0
@@ -534,6 +545,8 @@ class PokerTable:
                 self.seats[seat_i]["showdown_val"] = 8000
                 self.seats[seat_i]["holecards"] = []
 
+        self._increment_button()
+        self.whose_turn = self.button
         self._handle_auto_post()
 
     def _handle_auto_post(self):
@@ -557,7 +570,7 @@ class PokerTable:
         # Sanity check - don't call it if there's only one player left
         active_players = sum(
             [
-                self.seats[i].get("sitting_out", False)
+                not self.seats[i].get("sitting_out", True)
                 for i in range(self.num_seats)
                 if self.seats[i] is not None
             ]
