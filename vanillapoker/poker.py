@@ -45,7 +45,6 @@ ACT_CHECK = 5
 class HandState:
     player_stack: int
     player_bet_street: int
-    whose_turn: int
     hand_stage: int  # HandStage
     last_action_type: int  # ActionType
     last_action_amount: int
@@ -110,6 +109,12 @@ class PokerTable:
         bet_street = sum([x["bet_street"] for x in self.seats if x is not None])
         return self.pot_initial + bet_street
 
+    @property
+    def num_active_players(self):
+        return sum(
+            [1 for player in self.seats if player is not None and player["in_hand"]]
+        )
+
     def serialize(self):
         """
         Store full game state in a way that we can stash it in a mysql table
@@ -136,6 +141,20 @@ class PokerTable:
             if player is None:
                 self.join_table(seat_i, deposit_amount, address)
                 break
+
+    def leave_table_no_seat_i(self, address: str):
+        for seat_i, player in enumerate(self.seats):
+            if player["address"] == address:
+                self.leave_table(seat_i, address)
+                return
+        raise Exception("Player not in game!")
+
+    def rebuy_no_seat_i(self, rebuy_amount: int, address: str):
+        for seat_i, player in enumerate(self.seats):
+            if player["address"] == address:
+                self.rebuy(seat_i, rebuy_amount, address)
+                return
+        raise Exception("Player not in game!")
 
     def join_table(
         self, seat_i: int, deposit_amount: int, address: str, auto_post=True
@@ -170,17 +189,8 @@ class PokerTable:
                 "depositAmount": deposit_amount,
             }
         )
-
-        # If auto post we might need to post SB or BB...
-        # TODO -
-        # Hardcoded for 2 players here
-        if auto_post and len([p for p in self.seats if p is not None]) == 2:
-            # Only post when both players have joined?
-            address_sb = self.seats[self.whose_turn]["address"]
-            # TODO - this logic will fail if seats are skipped
-            address_bb = self.seats[(self.whose_turn + 1) % self.num_seats]["address"]
-            self.take_action(ACT_SB_POST, address_sb, self.small_blind)
-            self.take_action(ACT_BB_POST, address_bb, self.big_blind)
+        # If we hit two active players, we can start the hand
+        self._handle_auto_post()
 
     def leave_table(self, seat_i: int, address: str):
         assert self.seats[seat_i]["address"] == address, "Player not at seat!"
@@ -214,14 +224,12 @@ class PokerTable:
             hs_new.hand_stage = ACT_BB_POST
             hs_new.facing_bet = amount
             hs_new.last_raise = amount
-            hs_new.whose_turn = 1 - hs.whose_turn
             hs_new.player_stack -= amount
             hs_new.player_bet_street = amount
         elif action_type == ACT_BB_POST:
             hs_new.hand_stage = HS_HOLECARDS_DEAL
             hs_new.facing_bet = amount
             hs_new.last_raise = amount
-            hs_new.whose_turn = 1 - hs.whose_turn
             hs_new.player_stack -= amount
             hs_new.player_bet_street = amount
         elif action_type == ACT_BET:
@@ -230,25 +238,22 @@ class PokerTable:
             hs_new.player_bet_street = amount
             hs_new.facing_bet = amount
             hs_new.last_raise = hs.player_bet_street - hs.facing_bet
+            # For bets it reopens action
             hs_new.closing_action_count = 1
-            hs_new.whose_turn = 1 - hs.whose_turn
         elif action_type == ACT_FOLD:
             # Only for two players!  Needs more work...
             hs_new.hand_stage = HS_SHOWDOWN
             hs_new.in_hand = False
             hs_new.betting_over = True
-            hs_new.closing_action_count += 1
+            # Do NOT increment here - player is just no longer active
+            # hs_new.closing_action_count += 1
         elif action_type == ACT_CALL:
             call_amount_new = hs.facing_bet - hs.player_bet_street
             hs_new.player_stack -= call_amount_new
-            # TODO
-            # hardcoded for 2 players, and we need to consider empty seats...
-            hs_new.whose_turn = (hs.whose_turn + 1) % 2
             hs_new.player_bet_street += call_amount_new
             hs_new.closing_action_count += 1
         elif action_type == ACT_CHECK:
             hs_new.closing_action_count += 1
-            hs_new.whose_turn = (hs.whose_turn + 1) % 2
 
         hs_new.last_action_type = action_type
         hs_new.last_action_amount = amount
@@ -300,7 +305,6 @@ class PokerTable:
         hs = HandState(
             player_stack=player_data["stack"],
             player_bet_street=player_data["bet_street"],
-            whose_turn=self.whose_turn,
             hand_stage=self.hand_stage,
             last_action_type=self.last_action_type,
             last_action_amount=self.last_action_amount,
@@ -311,11 +315,9 @@ class PokerTable:
             button=self.button,
         )
 
-        # We actually need num players active on this street
-        num_players = sum([1 for player in self.seats if player is not None])
         hs_new = self._transition_hand_state(hs, action_type, amount)
 
-        street_over = hs_new.closing_action_count == num_players
+        street_over = hs_new.closing_action_count == self.num_active_players
         if street_over:
             self.pot_initial = self.pot_total
             if hs.hand_stage == HS_PREFLOP_BETTING:
@@ -367,7 +369,6 @@ class PokerTable:
         self.seats[seat_i]["last_action_type"] = action_type
         self.seats[seat_i]["last_amount"] = amount
 
-        self.whose_turn = hs_new.whose_turn
         self.hand_stage = hs_new.hand_stage
         self.last_action_type = hs_new.last_action_type
         self.last_action_amount = hs_new.last_action_amount
@@ -376,6 +377,10 @@ class PokerTable:
         self.facing_bet = hs_new.facing_bet
         self.last_raise = hs_new.last_raise
         self.button = hs_new.button
+
+        # Only increment if we're not at showdown
+        if not next_hand:
+            self._increment_whose_turn()
 
         # TODO - make sure we don't call next_street if we've called next_hand?
         # Is it even possible?  Add an assertion?
@@ -386,7 +391,6 @@ class PokerTable:
         # we'll clear out events when we transition to nex<t hand
         # -so how do we cleanly access any final event in API?
         # stack_arr = [x["stack"] for x in self.seats if x is not None else None]
-
         players = [pokerutils.build_player_data(seat) for seat in self.seats]
         action = {
             "tag": "gameState",
@@ -487,6 +491,7 @@ class PokerTable:
         self.last_raise = 0
         self.last_action_type = None
         self.last_action_amount = 0
+        self.closing_action_count = 0
 
         # Reset player actions
         for player in self.seats:
@@ -520,3 +525,41 @@ class PokerTable:
                 self.seats[seat_i]["bet_street"] = 0
                 self.seats[seat_i]["showdown_val"] = 8000
                 self.seats[seat_i]["holecards"] = []
+
+        self._handle_auto_post()
+
+    def _handle_auto_post(self):
+        # If we have two active players and game is in preflop stage - Post!
+        if (
+            self.hand_stage == HS_SB_POST_STAGE
+            and len([p for p in self.seats if p is not None]) >= 2
+        ):
+            if self.seats[self.whose_turn]["auto_post"]:
+                address_sb = self.seats[self.whose_turn]["address"]
+                self.take_action(ACT_SB_POST, address_sb, self.small_blind)
+                # whose_turn should have been incremented
+                if self.seats[self.whose_turn]["auto_post"]:
+                    address_bb = self.seats[self.whose_turn]
+                    self.take_action(ACT_BB_POST, address_bb, self.big_blind)
+
+    def _increment_whose_turn(self):
+        """
+        Should always progress to the next active player
+        """
+        # Sanity check - don't call it if there's only one player left
+        assert (
+            sum(
+                [
+                    self.seats[i].get("in_hand", False)
+                    for i in range(self.num_seats)
+                    if self.seats[i] is not None
+                ]
+            )
+            >= 2
+        )
+        while True:
+            self.whose_turn = (self.whose_turn + 1) % self.num_seats
+            if self.seats[self.whose_turn] is None:
+                continue
+            if self.seats[self.whose_turn].get("in_hand", False):
+                break
