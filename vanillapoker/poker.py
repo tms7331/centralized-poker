@@ -418,7 +418,7 @@ class PokerTable:
         action = {"tag": "settle", "pots": []}
 
         # what about split pots?
-        winner_val = 0
+        winner_val = 8000
         winner_i = []
         for seat_i, player in enumerate(self.seats):
             if player is not None:
