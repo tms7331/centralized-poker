@@ -470,16 +470,10 @@ class PokerTable:
         This will only be called if we get to showdown
         For all players still in the hand, calculate their showdown value and store it
         """
-        action = {"tag": "showdown", "cards": []}
-        self.events.append(action)
-
         for player in self.seats:
             if player is not None and player["in_hand"]:
                 holecards = player["holecards"]
                 player["showdown_val"] = self._get_showdown_val(holecards + self.board)
-                action["cards"].append(holecards)
-            else:
-                action["cards"].append(None)
 
     def _next_street(self):
         # TODO - this is hardcoded for 2p

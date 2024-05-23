@@ -168,8 +168,8 @@ def take_action():
 
     # Only cache if we completed a hand!
     end_hand_stage = poker_table_obj.hand_stage
-    if end_hand_stage < start_hand_stage:
-        store_table(table_id, poker_table_obj.serialize())
+    # if end_hand_stage < start_hand_stage:
+    #     store_table(table_id, poker_table_obj.serialize())
 
     return jsonify({"success": True}), 200
 
@@ -301,7 +301,7 @@ def load_lookup_tables():
 if __name__ == "__main__":
     init_db()
     lookup_table_flush_5c, lookup_table_basic_7c = load_lookup_tables()
-    poker.set_lookup_tables(lookup_table_basic_7c, lookup_table_flush_5c)
+    poker.PokerTable.set_lookup_tables(lookup_table_basic_7c, lookup_table_flush_5c)
 
     # cached_tables = retrieve_tables()
     # for table in cached_tables:
