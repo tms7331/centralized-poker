@@ -495,7 +495,12 @@ class PokerTable:
                         holecards + self.board
                     )
                     action["cards"].append(player["holecards"])
-                    action["handStrs"].append("Placeholder-Flush")
+                    handStr = [
+                        x
+                        for x in pokerutils.card_descs
+                        if x[0] <= player["showdown_val"]
+                    ][-1][1]
+                    action["handStrs"].append(handStr)
                 else:
                     action["cards"].append([])
                     action["handStrs"].append("")
