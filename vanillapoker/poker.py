@@ -422,14 +422,11 @@ class PokerTable:
         winner_i = []
         for seat_i, player in enumerate(self.seats):
             if player is not None:
-                action["cards"].append(player["holecards"])
                 if player["showdown_val"] < winner_val:
                     winner_val = player["showdown_val"]
                     winner_i = [seat_i]
                 elif player["showdown_val"] == winner_val:
                     winner_i.append(seat_i)
-            else:
-                action["cards"].append(None)
 
         pot_dict = {"potTotal": self.pot_total, "winners": {}}
 
