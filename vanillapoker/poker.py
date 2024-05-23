@@ -231,32 +231,39 @@ class PokerTable:
             hs_new.last_raise = amount
             hs_new.player_stack -= amount
             hs_new.player_bet_street = amount
+            hs_new.last_action_amount = amount
         elif action_type == ACT_BB_POST:
             hs_new.hand_stage = HS_HOLECARDS_DEAL
             hs_new.facing_bet = amount
             hs_new.last_raise = amount
             hs_new.player_stack -= amount
             hs_new.player_bet_street = amount
+            hs_new.last_action_amount = amount
         elif action_type == ACT_BET:
             bet_amount_new = amount - hs.player_bet_street
+            assert amount <= bet_amount_new, "Insufficient funds!"
             hs_new.player_stack -= bet_amount_new
             hs_new.player_bet_street = amount
             hs_new.facing_bet = amount
             hs_new.last_raise = hs.player_bet_street - hs.facing_bet
             # For bets it reopens action
             hs_new.closing_action_count = 1
+            hs_new.last_action_amount = bet_amount_new
         elif action_type == ACT_FOLD:
-            pass
+            hs_new.last_action_amount = 0
         elif action_type == ACT_CALL:
             call_amount_new = hs.facing_bet - hs.player_bet_street
+            call_amount_new = min(call_amount_new, hs.player_stack)
             hs_new.player_stack -= call_amount_new
             hs_new.player_bet_street += call_amount_new
             hs_new.closing_action_count += 1
+            hs_new.last_action_amount = call_amount_new
         elif action_type == ACT_CHECK:
             hs_new.closing_action_count += 1
+            hs_new.last_action_amount = 0
 
+        assert hs_new.player_stack >= 0, "Cannot have negative stack!"
         hs_new.last_action_type = action_type
-        hs_new.last_action_amount = amount
 
         return hs_new
 

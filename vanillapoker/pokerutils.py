@@ -19,7 +19,7 @@ def build_player_data(seat):
 
 # Map-ish thing from hand values to hand descriptions
 card_descs = [
-    (0, "Royal Flush ROYAL FLUSH"),
+    (0, "Royal Flush"),
     (1, "King High Straight Flush"),
     (2, "Queen High Straight Flush"),
     (3, "Jack High Straight Flush"),
