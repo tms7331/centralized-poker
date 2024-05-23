@@ -189,6 +189,11 @@ class PokerTable:
                 "depositAmount": deposit_amount,
             }
         )
+        # If they're the FIRST player to join - give them the button and whose_turn?
+        if sum([1 for player in self.seats if player is not None]) == 1:
+            self.button = seat_i
+            self.whose_turn = seat_i
+
         # If we hit two active players, we can start the hand
         self._handle_auto_post()
 

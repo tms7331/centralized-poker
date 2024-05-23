@@ -7,6 +7,7 @@ import time
 import threading
 import json
 import random
+import traceback
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
@@ -79,6 +80,20 @@ def store_table(table_id, table_serialized):
     conn.close()
 
 
+def update_table(table_id, table_serialized):
+    """
+    Store a serialized poker table in our database
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"UPDATE poker_table_cache SET table_data = {table_serialized} WHERE table_id = {table_id}"
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
 def retrieve_tables():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -133,7 +148,8 @@ def leave_table():
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
-    poker_table_obj.leave_table(seat_i, player_id)
+    # poker_table_obj.leave_table(seat_i, player_id)
+    poker_table_obj.leave_table_no_seat_i(player_id)
     ws_emit_actions(table_id, poker_table_obj)
     return jsonify({"success": True}), 200
 
@@ -147,8 +163,10 @@ def rebuy():
     if table_id not in TABLE_STORE:
         return jsonify({"success": False}), 400
     poker_table_obj = TABLE_STORE[table_id]
-    poker_table_obj.rebuy(seat_i, rebuy_amount, player_id)
+    # poker_table_obj.rebuy(seat_i, rebuy_amount, player_id)
+    poker_table_obj.rebuy_no_seat_i(rebuy_amount, player_id)
     ws_emit_actions(table_id, poker_table_obj)
+
     return jsonify({"success": True}), 200
 
 
@@ -168,9 +186,14 @@ def take_action():
 
     # Only cache if we completed a hand!
     end_hand_stage = poker_table_obj.hand_stage
-    # if end_hand_stage < start_hand_stage:
-    #     store_table(table_id, poker_table_obj.serialize())
-
+    if end_hand_stage < start_hand_stage:
+        print("UPDATING FOR TABLEID", table_id)
+        try:
+            update_table(table_id, poker_table_obj.serialize())
+        except:
+            err = traceback.format_exc()
+            print("Intitial instantiation failed!", err)
+            return False, {}
     return jsonify({"success": True}), 200
 
 
