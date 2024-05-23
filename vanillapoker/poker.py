@@ -415,7 +415,7 @@ class PokerTable:
         Evaluate whose is the LOWEST, and they win the pot
         """
         # Hacking in action here...
-        action = {"tag": "showdown", "cards": [], "pots": []}
+        action = {"tag": "settle", "pots": []}
 
         # what about split pots?
         winner_val = 0
@@ -431,7 +431,7 @@ class PokerTable:
             else:
                 action["cards"].append(None)
 
-        pot_dict = {"pot_total": self.pot_total, "winners": {}}
+        pot_dict = {"potTotal": self.pot_total, "winners": {}}
 
         num_winners = len(winner_i)
         for seat_i in winner_i:
@@ -470,10 +470,18 @@ class PokerTable:
         This will only be called if we get to showdown
         For all players still in the hand, calculate their showdown value and store it
         """
+        action = {"tag": "showdown", "cards": [], "handStrs": []}
         for player in self.seats:
             if player is not None and player["in_hand"]:
                 holecards = player["holecards"]
                 player["showdown_val"] = self._get_showdown_val(holecards + self.board)
+                action["cards"].append(player["holecards"])
+                action["handStrs"].append("Placeholder-Flush")
+            else:
+                action["cards"].append([])
+                action["handStrs"].append("")
+
+        self.events.append(action)
 
     def _next_street(self):
         # TODO - this is hardcoded for 2p
