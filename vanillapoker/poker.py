@@ -438,7 +438,7 @@ class PokerTable:
         # First get non-flush lookup value
         primes = [prime_mapping[x % 13] for x in cards]
         hand_val = reduce(lambda x, y: x * y, primes)
-        lookup_val = self.lookup_table_basic_7c[hand_val]
+        lookup_val = self.lookup_table_basic_7c[str(int(hand_val))]
 
         # Check for a flush too...
         for suit in range(4):
@@ -448,7 +448,7 @@ class PokerTable:
                 combos = itertools.combinations(matches, 5)
                 for c in combos:
                     hand_val = reduce(lambda x, y: x * y, c)
-                    lookup_val_ = self.lookup_table_flush_5c[hand_val]
+                    lookup_val_ = self.lookup_table_flush_5c[str(int(hand_val))]
                     lookup_val = min(lookup_val, lookup_val_)
 
         return lookup_val
@@ -503,3 +503,15 @@ class PokerTable:
                 self.seats[seat_i]["bet_street"] = 0
                 self.seats[seat_i]["showdown_val"] = 8000
                 self.seats[seat_i]["holecards"] = []
+
+        # If auto post we might need to post SB or BB...
+        # TODO -
+        # Hardcoded for 2 players here
+        auto_post = True
+        if auto_post and len([p for p in self.seats if p is not None]) == 2:
+            # Only post when both players have joined?
+            address_sb = self.seats[self.whose_turn]["address"]
+            # TODO - this logic will fail if seats are skipped
+            address_bb = self.seats[(self.whose_turn + 1) % self.num_seats]["address"]
+            self.take_action(ACT_SB_POST, address_sb, self.small_blind)
+            self.take_action(ACT_BB_POST, address_bb, self.big_blind)
