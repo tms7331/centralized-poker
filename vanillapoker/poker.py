@@ -414,21 +414,33 @@ class PokerTable:
         At this point every player should have a "sd_value" set for their hands
         Evaluate whose is the LOWEST, and they win the pot
         """
+        # Hacking in action here...
+        action = {"tag": "showdown", "cards": [], "pots": []}
+
         # what about split pots?
         winner_val = 0
         winner_i = []
         for seat_i, player in enumerate(self.seats):
             if player is not None:
+                action["cards"].append(player["holecards"])
                 if player["showdown_val"] < winner_val:
                     winner_val = player["showdown_val"]
                     winner_i = [seat_i]
                 elif player["showdown_val"] == winner_val:
                     winner_i.append(seat_i)
+            else:
+                action["cards"].append(None)
+
+        pot_dict = {"pot_total": self.pot_total, "winners": {}}
 
         num_winners = len(winner_i)
         for seat_i in winner_i:
             # TODO - can we have floating point errors here?  Should we round?
-            self.seats[seat_i]["stack"] += self.pot / num_winners
+            self.seats[seat_i]["stack"] += self.pot_total / num_winners
+            pot_dict["winners"][seat_i] = self.pot_total / num_winners
+
+        action["pots"].append(pot_dict)
+        self.events.append(action)
 
     def _get_showdown_val(self, cards):
         """
@@ -458,10 +470,16 @@ class PokerTable:
         This will only be called if we get to showdown
         For all players still in the hand, calculate their showdown value and store it
         """
+        action = {"tag": "showdown", "cards": []}
+        self.events.append(action)
+
         for player in self.seats:
             if player is not None and player["in_hand"]:
                 holecards = player["holecards"]
                 player["showdown_val"] = self._get_showdown_val(holecards + self.board)
+                action["cards"].append(holecards)
+            else:
+                action["cards"].append(None)
 
     def _next_street(self):
         # TODO - this is hardcoded for 2p
