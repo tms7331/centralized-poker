@@ -33,7 +33,6 @@ def test_transition_hand_state(t):
     hs = poker.HandState(
         player_stack=100,
         player_bet_street=23,
-        whose_turn=0,
         hand_stage=poker.HS_FLOP_BETTING,
         last_action_type=poker.ACT_BET,
         last_action_amount=10,
@@ -59,7 +58,6 @@ def test_integration(t):
     hs = poker.HandState(
         player_stack=100,
         player_bet_street=23,
-        whose_turn=0,
         hand_stage=poker.HandStage.FLOP_BETTING,
         last_action_type=poker.ACT_BET,
         last_action_amount=10,
@@ -109,6 +107,47 @@ def test_get_showdown_val_flush(t):
     cards = rf + [0, 1]
     lookup_val = t._get_showdown_val(cards)
     assert lookup_val == lookup_val_expected
+
+
+def test_auto_post(t):
+    t._get_showdown_val = lambda x: 10
+    p0 = "0x123"
+    p1 = "0x456"
+    t.join_table(0, 100, p0)
+    # Should be at stage0 now...
+    assert t.hand_stage == poker.HS_SB_POST_STAGE
+    # And now - should have auto posted!
+    t.join_table(1, 100, p1)
+    assert t.hand_stage == poker.HS_PREFLOP_BETTING
+
+
+def test_fold_ends_hand(t):
+    t._get_showdown_val = lambda x: 10
+    p0 = "0x123"
+    p1 = "0x456"
+    t.join_table(0, 100, p0)
+    t.join_table(1, 100, p1)
+    t.take_action(poker.ACT_FOLD, p0, 0)
+
+    # Should have credited player 2 with the pot
+    assert t.seats[0]["stack"] == 99
+    assert t.seats[1]["stack"] == 101
+
+    assert t.hand_stage == poker.HS_PREFLOP_BETTING
+
+
+def test_hands_are_dealt(t):
+    t._get_showdown_val = lambda x: 10
+    p0 = "0x123"
+    p1 = "0x456"
+    t.join_table(0, 100, p0)
+    t.join_table(1, 100, p1)
+
+    # Should have cards!!
+    assert len(t.seats[0]["holecards"]) == 2
+    assert len(t.seats[1]["holecards"]) == 2
+
+    assert t.hand_stage == poker.HS_PREFLOP_BETTING
 
 
 def test_integration(t):

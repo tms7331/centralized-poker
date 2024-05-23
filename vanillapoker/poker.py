@@ -84,7 +84,7 @@ class PokerTable:
         self.seats = [None for _ in range(num_seats)]
         self.player_to_seat = {}
 
-        self.hand_stage = HS_PREFLOP_BETTING
+        self.hand_stage = HS_SB_POST_STAGE
         # Pot up to this point in the hand
         self.pot_initial = 0
         self.button = 0
@@ -492,6 +492,7 @@ class PokerTable:
     def _next_street(self):
         # TODO - this is hardcoded for 2p
         self.whose_turn = self.button
+
         self.facing_bet = 0
         self.last_raise = 0
         self.last_action_type = None
@@ -506,10 +507,12 @@ class PokerTable:
                 player["bet_street"] = 0
 
     def _next_hand(self):
-        self.hand_stage = HS_PREFLOP_BETTING
+        self.hand_stage = HS_SB_POST_STAGE
         self.pot_initial = 0
-        self.button = (self.button + 1) % self.num_seats
-        self.whose_turn = (self.whose_turn + 1) % self.num_seats
+
+        self._increment_button()
+        self.whose_turn = self.button
+
         self.closing_action_count = 0
         self.facing_bet = 0
         self.last_raise = 0
@@ -544,8 +547,31 @@ class PokerTable:
                 self.take_action(ACT_SB_POST, address_sb, self.small_blind)
                 # whose_turn should have been incremented
                 if self.seats[self.whose_turn]["auto_post"]:
-                    address_bb = self.seats[self.whose_turn]
+                    address_bb = self.seats[self.whose_turn]["address"]
                     self.take_action(ACT_BB_POST, address_bb, self.big_blind)
+
+    def _increment_button(self):
+        """
+        Should always progress to the next active player
+        """
+        # Sanity check - don't call it if there's only one player left
+        active_players = sum(
+            [
+                self.seats[i].get("sitting_out", False)
+                for i in range(self.num_seats)
+                if self.seats[i] is not None
+            ]
+        )
+
+        # TODO - how do we handle moving button if there are players sitting out?
+        # What if there are empty seats?
+        if active_players >= 2:
+            while True:
+                self.button = (self.button + 1) % self.num_seats
+                if self.seats[self.button] is None:
+                    continue
+                if self.seats[self.button].get("in_hand", False):
+                    break
 
     def _increment_whose_turn(self):
         """
