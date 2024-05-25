@@ -700,6 +700,27 @@ class PokerTable:
                 self.events.append(tag_hc)
                 self.events_pop.append(tag_hc)
 
+        # HACK - sending gamestate again
+        players = [pokerutils.build_player_data(seat) for seat in self.seats]
+        action = {
+            "tag": "gameState",
+            "potInitial": self.pot_initial,
+            "pot": self.pot_total,
+            "players": players,
+            "button": self.button,
+            "whoseTurn": self.whose_turn,
+            "board": self.board,
+            "handStage": self.hand_stage,
+            "facingBet": self.facing_bet,
+            "lastRaise": self.last_raise,
+            "action": {
+                "type": None,
+                "amount": None,
+            },
+        }
+        self.events.append(action)
+        self.events_pop.append(action)
+
     def _deal_flop(self):
         self.board = self.deck[0:3]
         tag_flop = {"tag": "cards", "cardType": "flop", "cards": self.deck[0:3]}
