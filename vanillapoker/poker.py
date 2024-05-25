@@ -49,7 +49,6 @@ class HandState:
     last_action_type: int  # ActionType
     last_action_amount: int
     transition_next_street: bool
-    closing_action_count: int
     facing_bet: int
     last_raise: int
     button: int
@@ -123,6 +122,28 @@ class PokerTable:
                 if player is not None and player["in_hand"] and player["stack"] > 0
             ]
         )
+
+    def all_folded(self):
+        # TODO - definitely cleaner logic for this, look to refactor
+        return (
+            sum(
+                [1 for player in self.seats if player is not None and player["in_hand"]]
+            )
+            == 1
+        )
+
+    def allin(self):
+        # TODO - definitely cleaner logic for this, look to refactor
+        return (
+            sum(
+                [
+                    1
+                    for player in self.seats
+                    if player is not None and player["in_hand"] and player["stack"] > 0
+                ]
+            )
+            <= 1
+        ) and self.closing_action_count == 0
 
     def serialize(self):
         """
@@ -261,7 +282,6 @@ class PokerTable:
             hs_new.facing_bet = amount
             hs_new.last_raise = hs.player_bet_street - hs.facing_bet
             # For bets it reopens action
-            hs_new.closing_action_count = 1
             hs_new.last_action_amount = bet_amount_new
         elif action_type == ACT_FOLD:
             hs_new.last_action_amount = 0
@@ -270,10 +290,8 @@ class PokerTable:
             call_amount_new = min(call_amount_new, hs.player_stack)
             hs_new.player_stack -= call_amount_new
             hs_new.player_bet_street += call_amount_new
-            hs_new.closing_action_count += 1
             hs_new.last_action_amount = call_amount_new
         elif action_type == ACT_CHECK:
-            hs_new.closing_action_count += 1
             hs_new.last_action_amount = 0
 
         assert hs_new.player_stack >= 0, "Insufficient funds!"
@@ -296,7 +314,6 @@ class PokerTable:
             last_action_type=self.last_action_type,
             last_action_amount=self.last_action_amount,
             transition_next_street=False,
-            closing_action_count=self.closing_action_count,
             facing_bet=self.facing_bet,
             last_raise=self.last_raise,
             button=self.button,
@@ -310,11 +327,17 @@ class PokerTable:
         self.seats[seat_i]["last_amount"] = amount
         if action_type == ACT_FOLD:
             self.seats[seat_i]["in_hand"] = False
+        # Reset action count if it was a bet, otherwise it should increment
+        # And we'll increment it as we skip over players...
+        if action_type in [ACT_SB_POST, ACT_BB_POST]:
+            self.closing_action_count = -1
+        elif action_type in [ACT_BET]:
+            self.closing_action_count = 0
 
         self.last_action_type = hs_new.last_action_type
         self.last_action_amount = hs_new.last_action_amount
         # self.pot = self.pot
-        self.closing_action_count = hs_new.closing_action_count
+        # self.closing_action_count = hs_new.closing_action_count
         self.facing_bet = hs_new.facing_bet
         self.last_raise = hs_new.last_raise
         self.button = hs_new.button
@@ -346,10 +369,9 @@ class PokerTable:
         self._increment_whose_turn()
 
         # When we post blinds we don't want to call this
+        posted = action_type in [ACT_SB_POST, ACT_BB_POST]
         if external:
-            self._transition_hand_stage(
-                closing_action_count=hs_new.closing_action_count
-            )
+            self._transition_hand_stage(posted=posted)
 
     def _settle(self):
         """
@@ -435,7 +457,31 @@ class PokerTable:
             # Only send showdown event if we had a real showdown
             self.events.append(action)
 
+    def _calculate_final_pot(self):
+        """
+        Any player who is still in_hand and has a stack > 0 is at showdown
+        """
+        street_players = [
+            i
+            for i in range(len(self.seats))
+            if self.seats[i] is not None
+            and self.seats[i]["in_hand"]
+            and self.seats[i]["stack"] > 0
+        ]
+        open_pot = self.pot_initial - sum([x["amount"] for x in self.pots_complete])
+        # Amount is how much was bet on this street, but think we don't need it?
+        amount = 0
+        main_pot_amount = self.build_pot(open_pot, amount, len(street_players))
+        main_pot = {"players": street_players, "amount": main_pot_amount}
+        self.pots_complete.append(main_pot)
+
     def _next_street(self):
+        """
+        also want it here...
+        """
+        # We'll overwrite the bet_this_street amounts, so need to store new pot here first
+        pot_initial_new = self.pot_total
+
         # TODO - this is hardcoded for 2p
         self.whose_turn = self.button
 
@@ -445,13 +491,21 @@ class PokerTable:
         self.last_action_amount = 0
         self.closing_action_count = 0
 
-        # Create sidepots and determine if players are all-in!!
+        # Have to do this before clearing out player bet_street values
+        street_players = [
+            i
+            for i in range(len(self.seats))
+            if self.seats[i] is not None
+            and self.seats[i]["in_hand"]
+            and self.seats[i]["bet_street"] > 0
+        ]
 
         # Reset player actions
         all_ins = []
         for player_i, player in enumerate(self.seats):
             if player is not None:
                 # Determine if they went all-in, if yes we need to track side pots
+                # This should also track main pot if it goes to showdown?
                 if player["stack"] == 0 and player["bet_street"] > 0:
                     all_ins.append({"player": player_i, "amount": player["bet_street"]})
                 player["last_action_type"] = None
@@ -462,27 +516,31 @@ class PokerTable:
         all_ins.sort(key=lambda x: x["amount"])
         # Number of players who are still in the hand and were active on this street
         # We'll sort based on them
-        street_players = [
-            i
-            for i in range(len(self.seats))
-            if self.seats[i] is not None
-            and self.seats[i]["in_hand"]
-            and self.seats[i]["bet_street"] > 0
-        ]
-        for ai in all_ins:
+        for i in range(len(all_ins)):
+            ai = all_ins[i]
+            assert ai["amount"] >= 0
+            # Can happen if two players are AI for same amount
+            if ai["amount"] == 0:
+                continue
             # Pot starting on this street, EXCLUDING any side pots
-            open_pot = self.pot_initial - sum([x["amount"] for x in self.side_pots])
-            side_pot_amount = self.build_pot(open_pot, ai["amount"], street_players)
-            side_pot = {"street_players": street_players, "amount": side_pot_amount}
+            open_pot = self.pot_initial - sum([x["amount"] for x in self.pots_complete])
+            side_pot_amount = self.build_pot(
+                open_pot, ai["amount"], len(street_players)
+            )
+            side_pot = {"players": street_players, "amount": side_pot_amount}
             self.pots_complete.append(side_pot)
             # And remove this player from 'street_players'...
             street_players = [i for i in street_players if i != ai["player"]]
+            all_ins = [
+                {"player": x["player"], "amount": x["amount"] - ai["amount"]}
+                for x in all_ins
+            ]
 
-        self.pot_initial = self.pot_total
+        self.pot_initial = pot_initial_new
 
     def build_pot(self, open_pot, amount, street_players):
         pot_amount = open_pot + amount * street_players
-        return {"amount": pot_amount, "players": street_players}
+        return pot_amount
 
     def _next_hand(self):
         self.pot_initial = 0
@@ -573,6 +631,7 @@ class PokerTable:
         inc = False
         for i in range(self.whose_turn + 1, self.whose_turn + 1 + self.num_seats):
             check_i = i % self.num_seats
+            self.closing_action_count += 1
             if self.seats[check_i] is None:
                 continue
             # They have to be in the hand and have some funds
@@ -580,9 +639,13 @@ class PokerTable:
                 self.whose_turn = check_i
                 inc = True
                 break
+        # Can hit +1 on all-in pots
+        assert self.closing_action_count <= (
+            self.num_seats + 1
+        ), "Too high closing_action_count!"
 
         # Sanity check - should always have a player left if we increment
-        assert inc, "Failed to increment whose_turn!"
+        # assert inc, "Failed to increment whose_turn!"
 
     def _deal_holecards(self):
         for seat_i in range(self.num_seats):
@@ -615,10 +678,8 @@ class PokerTable:
             {"tag": "cards", "cardType": "river", "cards": self.deck[4:5]}
         )
 
-    def _hand_stage_over_check(self, closing_action_count):
-        # Edge case: Stacks 50, 200, 100, if actions goes:
-        # AI, AI, call - we have closing_action_count of 2, num_active_players of 1
-        street_over = closing_action_count >= self.num_active_players
+    def _hand_stage_over_check(self):
+        street_over = self.closing_action_count >= self.num_seats
         return street_over
 
     def _transition_hand_stage(self, **kwargs):
@@ -626,13 +687,17 @@ class PokerTable:
         Keep transitioning state until it's time to wait for external action...
         """
         if self.hand_stage == HS_SB_POST_STAGE:
-            posted = self._handle_auto_post("SB")
+            posted = kwargs.get("posted")
+            if not posted:
+                posted = self._handle_auto_post("SB")
             if posted:
                 self.hand_stage += 1
                 self._transition_hand_stage()
             return
         elif self.hand_stage == HS_BB_POST_STAGE:
-            posted = self._handle_auto_post("BB")
+            posted = kwargs.get("posted")
+            if not posted:
+                posted = self._handle_auto_post("BB")
             if posted:
                 self.hand_stage += 1
                 self._transition_hand_stage()
@@ -645,8 +710,7 @@ class PokerTable:
         elif self.hand_stage == HS_PREFLOP_BETTING:
             # If we're at preflop betting stage - we should wait for external action
             # Use '1' as default closing_action_count: if we're all-in it will proceed!
-            closing_action_count = kwargs.get("closing_action_count", 1)
-            if self._hand_stage_over_check(closing_action_count):
+            if self._hand_stage_over_check() or self.all_folded() or self.allin():
                 self.hand_stage += 1
                 self._next_street()
                 self._transition_hand_stage()
@@ -657,8 +721,7 @@ class PokerTable:
             self._transition_hand_stage()
             return
         elif self.hand_stage == HS_FLOP_BETTING:
-            closing_action_count = kwargs.get("closing_action_count", 1)
-            if self._hand_stage_over_check(closing_action_count):
+            if self._hand_stage_over_check() or self.all_folded() or self.allin():
                 self.hand_stage += 1
                 self._next_street()
                 self._transition_hand_stage()
@@ -669,8 +732,7 @@ class PokerTable:
             self._transition_hand_stage()
             return
         elif self.hand_stage == HS_TURN_BETTING:
-            closing_action_count = kwargs.get("closing_action_count", 1)
-            if self._hand_stage_over_check(closing_action_count):
+            if self._hand_stage_over_check() or self.all_folded() or self.allin():
                 self.hand_stage += 1
                 self._next_street()
                 self._transition_hand_stage()
@@ -681,10 +743,10 @@ class PokerTable:
             self._transition_hand_stage()
             return
         elif self.hand_stage == HS_RIVER_BETTING:
-            closing_action_count = kwargs.get("closing_action_count", 1)
-            if self._hand_stage_over_check(closing_action_count):
+            if self._hand_stage_over_check() or self.all_folded() or self.allin():
                 self.hand_stage += 1
                 self._next_street()
+                self._calculate_final_pot()
                 self._transition_hand_stage()
             return
         elif self.hand_stage == HS_SHOWDOWN:

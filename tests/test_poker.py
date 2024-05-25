@@ -4,49 +4,159 @@ import vanillapoker.poker as poker
 
 
 @pytest.fixture
-def t():
+def t6():
     return poker.PokerTable(1, 2, 40, 400, 6)
 
 
-def test_join_table(t):
-    # Join at a seat that is not 0
-    assert t.seats[2] is None
-    t.join_table(2, 100, "0x123")
-    assert t.seats[2] is not None
+@pytest.fixture
+def t2():
+    return poker.PokerTable(1, 2, 40, 400, 2)
 
 
-def test_no_bad_join_tables(t):
+def test_join_table(t6):
     # Join at a seat that is not 0
-    t.join_table(2, 100, "0x123")
+    assert t6.seats[2] is None
+    t6.join_table(2, 100, "0x123")
+    assert t6.seats[2] is not None
+
+
+def test_no_bad_join_tables(t6):
+    # Join at a seat that is not 0
+    t6.join_table(2, 100, "0x123")
     # Same player Joining at same or different seat should fail..
     with pytest.raises(AssertionError):
-        t.join_table(2, 100, "0x123")
+        t6.join_table(2, 100, "0x123")
     with pytest.raises(AssertionError):
-        t.join_table(0, 100, "0x123")
+        t6.join_table(0, 100, "0x123")
     # Different player joining at same seat should fail
     with pytest.raises(AssertionError):
-        t.join_table(2, 100, "0x456")
+        t6.join_table(2, 100, "0x456")
     # Joining at an out of bounds index should fail
     with pytest.raises(AssertionError):
-        t.join_table(-1, 100, "0x456")
+        t6.join_table(-1, 100, "0x456")
     with pytest.raises(AssertionError):
-        t.join_table(9, 100, "0x456")
+        t6.join_table(9, 100, "0x456")
     # Bad buying amount should fail
     with pytest.raises(AssertionError):
-        t.join_table(1, 100000, "0x456")
+        t6.join_table(1, 100000, "0x456")
     with pytest.raises(AssertionError):
-        t.join_table(1, 1, "0x456")
+        t6.join_table(1, 1, "0x456")
 
 
-def test_leave_table(t):
-    t.join_table(0, 100, "0x123")
-    assert t.seats[0] is not None
-    t.leave_table(0, "0x123")
-    assert t.seats[0] is None
+def test_leave_table(t6):
+    t6.join_table(0, 100, "0x123")
+    assert t6.seats[0] is not None
+    t6.leave_table(0, "0x123")
+    assert t6.seats[0] is None
 
 
-def test_rebuy(t):
-    t.join_table(0, 100, "0x123")
+def test_rebuy(t6):
+    t6.join_table(0, 100, "0x123")
     # SHoudl be able to rebuy for max of 100 more
-    t.rebuy(0, 100, "0x123")
-    assert t.seats[0]["stack"] == 200
+    t6.rebuy(0, 100, "0x123")
+    assert t6.seats[0]["stack"] == 200
+
+
+def test_auto_post_blinds(t6):
+    """
+    If two players join, check that the blinds are auto posted
+    """
+    t6.join_table(0, 100, "0x123")
+    t6.join_table(1, 100, "0x456")
+    # Blinds are 1/2, should be total of 3 in pot
+    # Should be at HS_PREFLOP_BETTING stage,
+    # With 1 and 2 bet
+    assert t6.hand_stage == poker.HS_PREFLOP_BETTING
+    assert t6.seats[0]["stack"] == 99
+    assert t6.seats[1]["stack"] == 98
+    assert t6.seats[0]["bet_street"] == 1
+    assert t6.seats[1]["bet_street"] == 2
+    assert len(t6.seats[0]["holecards"]) == 2
+    assert len(t6.seats[1]["holecards"]) == 2
+
+
+def test_integration_2p_showdown(t2, t6):
+    """
+    Play a full hand - both players join, play, then quit...
+    """
+    t = t2
+    # Will always be a tie, think it's ok?
+    t._get_showdown_val = lambda x: 10
+    p0 = "0x123"
+    p1 = "0x456"
+    t.join_table(0, 100, p0, False)
+    t.join_table(1, 100, p1, False)
+
+    t.take_action(poker.ACT_SB_POST, p0, 1)
+    t.take_action(poker.ACT_BB_POST, p1, 2)
+    assert t.hand_stage == poker.HS_PREFLOP_BETTING
+    t.take_action(poker.ACT_CALL, p0, 0)
+    assert t.hand_stage == poker.HS_PREFLOP_BETTING
+    t.take_action(poker.ACT_CHECK, p1, 0)
+
+    assert t.hand_stage == poker.HS_FLOP_BETTING
+    assert len(t.board) == 3
+
+    t.take_action(poker.ACT_BET, p0, 5)
+    t.take_action(poker.ACT_BET, p1, 10)
+    t.take_action(poker.ACT_CALL, p0, 0)
+
+    assert t.hand_stage == poker.HS_TURN_BETTING
+    assert len(t.board) == 4
+
+    t.take_action(poker.ACT_CHECK, p0, 0)
+    t.take_action(poker.ACT_CHECK, p1, 0)
+
+    assert t.hand_stage == poker.HS_RIVER_BETTING
+    assert len(t.board) == 5
+
+    t.take_action(poker.ACT_BET, p0, 5)
+    t.take_action(poker.ACT_CALL, p1, 0)
+
+    # Should have completed showdown and settle!
+    assert t.hand_stage == poker.HS_SB_POST_STAGE
+    # It was a split pot, so both should have 100
+    assert t.seats[0]["stack"] == 100
+    assert t.seats[1]["stack"] == 100
+
+
+def test_integration_2p_fold(t2):
+    t = t2
+    # Will always be a tie, think it's ok?
+    t._get_showdown_val = lambda x: 10
+    p0 = "0x123"
+    p1 = "0x456"
+    t.join_table(0, 100, p0, False)
+    t.join_table(1, 100, p1, False)
+
+    t.take_action(poker.ACT_SB_POST, p0, 1)
+    t.take_action(poker.ACT_BB_POST, p1, 2)
+    t.take_action(poker.ACT_FOLD, p0, 0)
+
+    # After the fold it should progress all the way to the end and credit winnings to p1
+    assert t.hand_stage == poker.HS_SB_POST_STAGE
+    # It was a split pot, so both should have 100
+    assert t.seats[0]["stack"] == 99
+    assert t.seats[1]["stack"] == 101
+
+
+def test_integration_2p_allin(t2):
+    t = t2
+    # Will always be a tie, think it's ok?
+    t._get_showdown_val = lambda x: 10
+    p0 = "0x123"
+    p1 = "0x456"
+    t.join_table(0, 100, p0, False)
+    t.join_table(1, 100, p1, False)
+
+    t.take_action(poker.ACT_SB_POST, p0, 1)
+    t.take_action(poker.ACT_BB_POST, p1, 2)
+    t.take_action(poker.ACT_BET, p0, 100)
+    assert t.hand_stage == poker.HS_PREFLOP_BETTING
+    t.take_action(poker.ACT_CALL, p1, 0)
+
+    # After the fold it should progress all the way to the end and credit winnings to p1
+    assert t.hand_stage == poker.HS_SB_POST_STAGE
+    # It was a split pot, so both should have 100
+    assert t.seats[0]["stack"] == 100
+    assert t.seats[1]["stack"] == 100
