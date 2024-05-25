@@ -722,22 +722,25 @@ class PokerTable:
         self.events_pop.append(action)
 
     def _deal_flop(self):
-        self.board = self.deck[0:3]
-        tag_flop = {"tag": "cards", "cardType": "flop", "cards": self.deck[0:3]}
-        self.events.append(tag_flop)
-        self.events_pop.append(tag_flop)
+        if not self.all_folded():
+            self.board = self.deck[0:3]
+            tag_flop = {"tag": "cards", "cardType": "flop", "cards": self.deck[0:3]}
+            self.events.append(tag_flop)
+            self.events_pop.append(tag_flop)
 
     def _deal_turn(self):
-        self.board = self.deck[:4]
-        tag_turn = {"tag": "cards", "cardType": "turn", "cards": self.deck[3:4]}
-        self.events.append(tag_turn)
-        self.events_pop.append(tag_turn)
+        if not self.all_folded():
+            self.board = self.deck[:4]
+            tag_turn = {"tag": "cards", "cardType": "turn", "cards": self.deck[3:4]}
+            self.events.append(tag_turn)
+            self.events_pop.append(tag_turn)
 
     def _deal_river(self):
-        self.board = self.deck[:5]
-        tag_river = {"tag": "cards", "cardType": "river", "cards": self.deck[4:5]}
-        self.events.append(tag_river)
-        self.events_pop.append(tag_river)
+        if not self.all_folded():
+            self.board = self.deck[:5]
+            tag_river = {"tag": "cards", "cardType": "river", "cards": self.deck[4:5]}
+            self.events.append(tag_river)
+            self.events_pop.append(tag_river)
 
     def _hand_stage_over_check(self):
         street_over = self.closing_action_count >= self.num_seats
