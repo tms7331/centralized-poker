@@ -94,10 +94,12 @@ async def disconnect(sid):
 
 
 async def ws_emit_actions(table_id, poker_table_obj):
-    while poker_table_obj.events:
-        event = poker_table_obj.events.pop(0)
-        # socketio.emit(table_id, event)
-        await sio.emit(table_id, event)
+    while True:
+        is_event, event = poker_table_obj.get_next_event()
+        if is_event:
+            await sio.emit(table_id, event)
+        else:
+            break
 
 
 class ItemJoinTable(BaseModel):
@@ -327,6 +329,18 @@ async def get_table(table_id: str):
         },
     }
     return {"table_info": table_info}
+
+
+@app.get("/getHandHistory")
+async def get_table(tableId: str, handId: int):
+    if tableId not in TABLE_STORE:
+        return {"success": False, "error": "Table not found!"}
+
+    poker_table_obj = TABLE_STORE[tableId]
+    if handId == -1:
+        handIds = sorted(list(poker_table_obj.hand_history.keys()))
+        handId = handIds[-1]
+    return {"hh": poker_table_obj.hand_history[handId]}
 
 
 # RUN:

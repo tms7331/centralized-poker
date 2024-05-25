@@ -104,6 +104,9 @@ class PokerTable:
 
         # We'll pop from this array in the api
         self.events = []
+        self.event_i = 0
+        # Map from hand_id to events list
+        self.hand_histories = {}
 
     @property
     def pot_total(self):
@@ -122,6 +125,13 @@ class PokerTable:
                 if player is not None and player["in_hand"] and player["stack"] > 0
             ]
         )
+
+    def get_next_event(self):
+        if self.event_i < len(self.events):
+            event = self.events[self.event_i]
+            self.event_i += 1
+            return True, event
+        return False, None
 
     def all_folded(self):
         # TODO - definitely cleaner logic for this, look to refactor
@@ -556,8 +566,6 @@ class PokerTable:
 
         random.shuffle(self.deck)
 
-        self.hand_id += 1
-
         # And set all player sd values to highest value
         for seat_i in range(self.num_seats):
             if self.seats[seat_i]:
@@ -577,6 +585,12 @@ class PokerTable:
 
         self._increment_button()
         self.whose_turn = self.button
+
+        # Map from hand_id to events list
+        self.hand_histories[self.hand_id] = list(self.events)
+        self.events = []
+        self.event_i = 0
+        self.hand_id += 1
 
     def _handle_auto_post(self, post_type: str):
         # If we have two active players and game is in preflop stage - Post!
