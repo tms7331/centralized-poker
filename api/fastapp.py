@@ -338,9 +338,9 @@ async def get_table(tableId: str, handId: int):
 
     poker_table_obj = TABLE_STORE[tableId]
     if handId == -1:
-        handIds = sorted(list(poker_table_obj.hand_history.keys()))
+        handIds = sorted(list(poker_table_obj.hand_histories.keys()))
         handId = handIds[-1]
-    return {"hh": poker_table_obj.hand_history[handId]}
+    return {"hh": poker_table_obj.hand_histories[handId]}
 
 
 # RUN:

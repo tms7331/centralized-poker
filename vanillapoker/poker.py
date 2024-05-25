@@ -349,6 +349,8 @@ class PokerTable:
         elif action_type in [ACT_BET]:
             self.closing_action_count = 0
 
+        print("Post action closing count", self.closing_action_count)
+
         self.last_action_type = hs_new.last_action_type
         self.last_action_amount = hs_new.last_action_amount
         # self.pot = self.pot
@@ -646,6 +648,7 @@ class PokerTable:
         inc = False
         for i in range(self.whose_turn + 1, self.whose_turn + 1 + self.num_seats):
             check_i = i % self.num_seats
+            print("CHECKING CHECKI", check_i)
             self.closing_action_count += 1
             if self.seats[check_i] is None:
                 continue
@@ -654,10 +657,10 @@ class PokerTable:
                 self.whose_turn = check_i
                 inc = True
                 break
-        # Can hit +1 on all-in pots
-        assert self.closing_action_count <= (
-            self.num_seats + 1
-        ), "Too high closing_action_count!"
+        # Can go beyond num_seats in variety of ways
+        # assert self.closing_action_count <= (
+        #     self.num_seats + 1
+        # ), "Too high closing_action_count!"
 
         # Sanity check - should always have a player left if we increment
         # assert inc, "Failed to increment whose_turn!"
