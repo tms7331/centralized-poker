@@ -342,6 +342,9 @@ class PokerTable:
         self.last_raise = hs_new.last_raise
         self.button = hs_new.button
 
+        # Will set whose_turn, safe to increment every time
+        self._increment_whose_turn()
+
         # TODO -
         # we'll clear out events when we transition to nex<t hand
         # -so how do we cleanly access any final event in API?
@@ -364,9 +367,6 @@ class PokerTable:
             },
         }
         self.events.append(action)
-
-        # Doesn't hurt to increment every time?
-        self._increment_whose_turn()
 
         # When we post blinds we don't want to call this
         posted = action_type in [ACT_SB_POST, ACT_BB_POST]
