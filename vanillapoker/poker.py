@@ -349,8 +349,6 @@ class PokerTable:
         elif action_type in [ACT_BET]:
             self.closing_action_count = 0
 
-        print("Post action closing count", self.closing_action_count)
-
         self.last_action_type = hs_new.last_action_type
         self.last_action_amount = hs_new.last_action_amount
         # self.pot = self.pot
@@ -485,10 +483,9 @@ class PokerTable:
             and self.seats[i]["in_hand"]
             and self.seats[i]["stack"] > 0
         ]
-        open_pot = self.pot_initial - sum([x["amount"] for x in self.pots_complete])
-        # Amount is how much was bet on this street, but think we don't need it?
-        amount = 0
-        main_pot_amount = self.build_pot(open_pot, amount, len(street_players))
+        main_pot_amount = self.pot_initial - sum(
+            [x["amount"] for x in self.pots_complete]
+        )
         main_pot = {"players": street_players, "amount": main_pot_amount}
         self.pots_complete.append(main_pot)
 
@@ -498,6 +495,13 @@ class PokerTable:
         """
         # We'll overwrite the bet_this_street amounts, so need to store new pot here first
         pot_initial_new = self.pot_total
+
+        # If there were all-ins on previous streets, this will be what's left for sidepots
+        # This should ALWAYS go to the first side pot calculated here
+        pot_initial_left = self.pot_initial - sum(
+            [x["amount"] for x in self.pots_complete]
+        )
+        bet_this_street_amounts = [x["bet_street"] for x in self.seats if x is not None]
 
         # TODO - this is hardcoded for 2p
         self.whose_turn = self.button
@@ -540,10 +544,22 @@ class PokerTable:
             if ai["amount"] == 0:
                 continue
             # Pot starting on this street, EXCLUDING any side pots
-            open_pot = self.pot_initial - sum([x["amount"] for x in self.pots_complete])
-            side_pot_amount = self.build_pot(
-                open_pot, ai["amount"], len(street_players)
-            )
+            # pot_initial_new is TOTAL
+            # open_pot = pot_initial_new - sum([x["amount"] for x in self.pots_complete])
+            # assert open_pot > 0
+
+            # Just the amount from this street
+            bet_this_street_amounts_here = [
+                min(x, ai["amount"]) for x in bet_this_street_amounts
+            ]
+            bet_this_street_amounts = [
+                x - min(x, ai["amount"]) for x in bet_this_street_amounts
+            ]
+            side_pot_amount = sum(bet_this_street_amounts_here)
+            if i == 0:
+                side_pot_amount += pot_initial_left
+
+            # Due to check above should never even be 0
             side_pot = {"players": street_players, "amount": side_pot_amount}
             self.pots_complete.append(side_pot)
             # And remove this player from 'street_players'...
@@ -555,10 +571,6 @@ class PokerTable:
 
         self.pot_initial = pot_initial_new
 
-    def build_pot(self, open_pot, amount, street_players):
-        pot_amount = open_pot + amount * street_players
-        return pot_amount
-
     def _next_hand(self):
         self.pot_initial = 0
 
@@ -568,6 +580,7 @@ class PokerTable:
         self.last_action_type = None
         self.last_action_amount = 0
         self.board = []
+        self.pots_complete = []
 
         self.deck = list(range(52))
 
@@ -585,10 +598,10 @@ class PokerTable:
                     or self.seats[seat_i]["sitting_out"]
                 ):
                     self.seats[seat_i]["in_hand"] = False
-                    self.seats[seat_i]["sitting_out"] = False
+                    self.seats[seat_i]["sitting_out"] = True
                 else:
                     self.seats[seat_i]["in_hand"] = True
-                    self.seats[seat_i]["sitting_out"] = True
+                    self.seats[seat_i]["sitting_out"] = False
 
         self._increment_button()
         self.whose_turn = self.button
@@ -648,7 +661,6 @@ class PokerTable:
         inc = False
         for i in range(self.whose_turn + 1, self.whose_turn + 1 + self.num_seats):
             check_i = i % self.num_seats
-            print("CHECKING CHECKI", check_i)
             self.closing_action_count += 1
             if self.seats[check_i] is None:
                 continue
@@ -657,6 +669,7 @@ class PokerTable:
                 self.whose_turn = check_i
                 inc = True
                 break
+
         # Can go beyond num_seats in variety of ways
         # assert self.closing_action_count <= (
         #     self.num_seats + 1
