@@ -747,6 +747,26 @@ class PokerTable:
         """
         Keep transitioning state until it's time to wait for external action...
         """
+        players = [pokerutils.build_player_data(seat) for seat in self.seats]
+        action = {
+            "tag": "gameState",
+            "potInitial": self.pot_initial,
+            "pot": self.pot_total,
+            "players": players,
+            "button": self.button,
+            "whoseTurn": self.whose_turn,
+            "board": self.board,
+            "handStage": self.hand_stage,
+            "facingBet": self.facing_bet,
+            "lastRaise": self.last_raise,
+            "action": {
+                "type": None,
+                "amount": None,
+            },
+        }
+        self.events.append(action)
+        self.events_pop.append(action)
+
         if self.hand_stage == HS_SB_POST_STAGE:
             posted = kwargs.get("posted")
             if not posted:
