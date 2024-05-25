@@ -417,7 +417,10 @@ class PokerTable:
             for seat_i in winner_i:
                 self.seats[seat_i]["stack"] += pot["amount"] / len(winner_i)
             # And add our event
-            pot_dict = {seat_i: pot["amount"] / len(winner_i) for seat_i in winner_i}
+            # [{ potTotal: 60, winners: { 0: 60 } }];
+            # pot_dict = {seat_i: pot["amount"] / len(winner_i) for seat_i in winner_i}
+            winner_dict = {seat_i: pot["amount"] / len(winner_i) for seat_i in winner_i}
+            pot_dict = {"potTotal": pot["amount"], "winners": winner_dict}
             action["pots"].append(pot_dict)
 
         self.events.append(action)
