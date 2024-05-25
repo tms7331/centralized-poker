@@ -72,9 +72,6 @@ class PokerTable:
         num_seats: int,
     ):
 
-        # Will be specific to table: f"{tableId}-{handId}" is full handId
-        self.hand_id = 1
-
         self.small_blind = small_blind
         self.big_blind = big_blind
         self.min_buyin = min_buyin
@@ -102,11 +99,19 @@ class PokerTable:
         random.shuffle(self.deck)
         self.board = []
 
-        # We'll pop from this array in the api
-        self.events = []
-        self.event_i = 0
-        # Map from hand_id to events list
+        # Will be specific to table: f"{table_id}-{hand_id}" is full unique hand identifier
+        # Note - first hand_id will actually be 1 (it's incremented in another function)
+        self.hand_id = 0
         self.hand_histories = {}
+        self._increment_hand_history()
+
+    def _increment_hand_history(self):
+        # Map from hand_id to events list
+        self.hand_id += 1
+        self.events = []
+        # This way we'll track hand histories for in-progress hands
+        self.hand_histories[self.hand_id] = self.events
+        self.event_i = 0
 
     @property
     def pot_total(self):
@@ -586,11 +591,7 @@ class PokerTable:
         self._increment_button()
         self.whose_turn = self.button
 
-        # Map from hand_id to events list
-        self.hand_histories[self.hand_id] = list(self.events)
-        self.events = []
-        self.event_i = 0
-        self.hand_id += 1
+        self._increment_hand_history()
 
     def _handle_auto_post(self, post_type: str):
         # If we have two active players and game is in preflop stage - Post!

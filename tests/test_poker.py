@@ -13,6 +13,23 @@ def t2():
     return poker.PokerTable(1, 2, 40, 400, 2)
 
 
+def test_increment_hand_history(t2):
+    t2.events.append("e1")
+    t2.events.append("e2")
+    assert t2.hand_histories[1] == ["e1", "e2"]
+    assert t2.hand_id == 1
+
+    t2._increment_hand_history()
+    assert t2.hand_histories[1] == ["e1", "e2"]
+    assert t2.hand_id == 2
+    assert t2.hand_histories[2] == []
+
+    t2.events.append("e3")
+    assert t2.hand_histories[1] == ["e1", "e2"]
+    assert t2.hand_id == 2
+    assert t2.hand_histories[2] == ["e3"]
+
+
 def test_join_table(t6):
     # Join at a seat that is not 0
     assert t6.seats[2] is None
