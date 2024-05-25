@@ -99,6 +99,9 @@ class PokerTable:
         random.shuffle(self.deck)
         self.board = []
 
+        # Append every single event here for the api to pop them off
+        # TODO - look to be smarter about this...
+        self.events_pop = []
         # Will be specific to table: f"{table_id}-{hand_id}" is full unique hand identifier
         # Note - first hand_id will actually be 1 (it's incremented in another function)
         self.hand_id = 0
@@ -229,14 +232,15 @@ class PokerTable:
         if self.hand_stage != HS_SB_POST_STAGE:
             self.seats[seat_i]["in_hand"] = False
 
-        self.events.append(
-            {
-                "tag": "joinTable",
-                "player": address,
-                "seat": seat_i,
-                "depositAmount": deposit_amount,
-            }
-        )
+        tag_jt = {
+            "tag": "joinTable",
+            "player": address,
+            "seat": seat_i,
+            "depositAmount": deposit_amount,
+        }
+        self.events.append(tag_jt)
+        self.events_pop.append(tag_jt)
+
         # If they're the FIRST player to join - give them the button and whose_turn?
         if sum([1 for player in self.seats if player is not None]) == 1:
             self.button = seat_i
@@ -249,7 +253,9 @@ class PokerTable:
         assert self.seats[seat_i]["address"] == address, "Player not at seat!"
         self.seats[seat_i] = None
         self.player_to_seat.pop(address)
-        self.events.append({"tag": "leaveTable", "player": address, "seat": seat_i})
+        tag_lt = {"tag": "leaveTable", "player": address, "seat": seat_i}
+        self.events.append(tag_lt)
+        self.events_pop.append(tag_lt)
 
     def rebuy(self, seat_i: int, rebuy_amount: int, address: str):
         assert self.seats[seat_i]["address"] == address, "Player not at seat!"
@@ -257,14 +263,14 @@ class PokerTable:
         assert self.min_buyin <= new_stack <= self.max_buyin, "Invalid rebuy amount"
         self.seats[seat_i]["stack"] = new_stack
 
-        self.events.append(
-            {
-                "tag": "rebuy",
-                "player": address,
-                "seat": seat_i,
-                "rebuyAmount": rebuy_amount,
-            }
-        )
+        tag_rb = {
+            "tag": "rebuy",
+            "player": address,
+            "seat": seat_i,
+            "rebuyAmount": rebuy_amount,
+        }
+        self.events.append(tag_rb)
+        self.events_pop.append(tag_rb)
 
     @staticmethod
     def _transition_hand_state(
@@ -382,6 +388,7 @@ class PokerTable:
             },
         }
         self.events.append(action)
+        self.events_pop.append(action)
 
         # When we post blinds we don't want to call this
         posted = action_type in [ACT_SB_POST, ACT_BB_POST]
@@ -414,6 +421,7 @@ class PokerTable:
             action["pots"].append(pot_dict)
 
         self.events.append(action)
+        self.events_pop.append(action)
 
     def _get_showdown_val(self, cards):
         """
@@ -471,6 +479,7 @@ class PokerTable:
 
             # Only send showdown event if we had a real showdown
             self.events.append(action)
+            self.events_pop.append(action)
 
     def _calculate_final_pot(self):
         """
@@ -687,27 +696,27 @@ class PokerTable:
                 start_i = 5 + seat_i * 2
                 cards = self.deck[start_i : start_i + 2]
                 self.seats[seat_i]["holecards"] = cards
-                self.events.append(
-                    {"tag": "cards", "cardType": f"p{seat_i}", "cards": cards}
-                )
+                tag_hc = {"tag": "cards", "cardType": f"p{seat_i}", "cards": cards}
+                self.events.append(tag_hc)
+                self.events_pop.append(tag_hc)
 
     def _deal_flop(self):
         self.board = self.deck[0:3]
-        self.events.append(
-            {"tag": "cards", "cardType": "flop", "cards": self.deck[0:3]}
-        )
+        tag_flop = {"tag": "cards", "cardType": "flop", "cards": self.deck[0:3]}
+        self.events.append(tag_flop)
+        self.events_pop.append(tag_flop)
 
     def _deal_turn(self):
         self.board = self.deck[:4]
-        self.events.append(
-            {"tag": "cards", "cardType": "turn", "cards": self.deck[3:4]}
-        )
+        tag_turn = {"tag": "cards", "cardType": "turn", "cards": self.deck[3:4]}
+        self.events.append(tag_turn)
+        self.events_pop.append(tag_turn)
 
     def _deal_river(self):
         self.board = self.deck[:5]
-        self.events.append(
-            {"tag": "cards", "cardType": "river", "cards": self.deck[4:5]}
-        )
+        tag_river = {"tag": "cards", "cardType": "river", "cards": self.deck[4:5]}
+        self.events.append(tag_river)
+        self.events_pop.append(tag_river)
 
     def _hand_stage_over_check(self):
         street_over = self.closing_action_count >= self.num_seats
