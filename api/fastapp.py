@@ -1,9 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List
 from socketio import AsyncServer, ASGIApp
 from dotenv import load_dotenv
 import sys
+import traceback
 import json
 import random
 import traceback
@@ -93,37 +96,35 @@ async def disconnect(sid):
 async def ws_emit_actions(table_id, poker_table_obj):
     while poker_table_obj.events:
         event = poker_table_obj.events.pop(0)
-        print("EMITTING EVENT", event)
         # socketio.emit(table_id, event)
         await sio.emit(table_id, event)
 
 
 class ItemJoinTable(BaseModel):
-    tableId: int
+    tableId: str
     address: str
     depositAmount: int
     seatI: int
 
 
 class ItemLeaveTable(BaseModel):
-    tableId: int
+    tableId: str
     address: str
     seatI: int
 
 
 class ItemRebuy(BaseModel):
-    tableId: int
+    tableId: str
     address: str
     rebuyAmount: str
     seatI: int
 
 
 class ItemTakeAction(BaseModel):
-    tableId: int
+    tableId: str
     address: str
-    rebuyAmount: str
     seatI: int
-    actionType: str
+    actionType: int
     amount: int
 
 
@@ -157,10 +158,15 @@ async def leave_table(item: ItemLeaveTable):
     player_id = item.address
     seat_i = item.seatI
     if table_id not in TABLE_STORE:
-        return {"success": False}
+        return {"success": False, "error": "Table not found!"}
     poker_table_obj = TABLE_STORE[table_id]
     # poker_table_obj.leave_table(seat_i, player_id)
-    poker_table_obj.leave_table_no_seat_i(player_id)
+    try:
+        poker_table_obj.leave_table_no_seat_i(player_id)
+    except:
+        err = traceback.format_exc()
+        return {"success": False, "error": err}
+
     await ws_emit_actions(table_id, poker_table_obj)
     return {"success": True}
 
@@ -175,7 +181,12 @@ async def rebuy(item: ItemRebuy):
         return {"success": False, "error": "Table not found!"}
     poker_table_obj = TABLE_STORE[table_id]
     # poker_table_obj.rebuy(seat_i, rebuy_amount, player_id)
-    poker_table_obj.rebuy_no_seat_i(rebuy_amount, player_id)
+    try:
+        poker_table_obj.rebuy_no_seat_i(rebuy_amount, player_id)
+    except:
+        err = traceback.format_exc()
+        return {"success": False, "error": err}
+
     await ws_emit_actions(table_id, poker_table_obj)
     return {"success": True}
 
@@ -191,7 +202,13 @@ async def take_action(item: ItemTakeAction):
         return {"success": False, "error": "Table not found!"}
     poker_table_obj = TABLE_STORE[table_id]
     start_hand_stage = poker_table_obj.hand_stage
-    poker_table_obj.take_action(action_type, player_id, amount)
+
+    try:
+        poker_table_obj.take_action(action_type, player_id, amount)
+    except:
+        err = traceback.format_exc()
+        return {"success": False, "error": err}
+
     await ws_emit_actions(table_id, poker_table_obj)
 
     # Only cache if we completed a hand!
@@ -219,31 +236,34 @@ def gen_new_table_id():
 @app.post("/createNewTable")
 async def create_new_table(item: ItemCreateTable):
     # Need validation here too?
-    small_blind = int(item.smallBlind)
-    big_blind = int(item.bigBlind)
-    min_buyin = int(item.minBuyin)
-    max_buyin = int(item.maxBuyin)
-    num_seats = int(item.numSeats)
+    small_blind = item.smallBlind
+    big_blind = item.bigBlind
+    min_buyin = item.minBuyin
+    max_buyin = item.maxBuyin
+    num_seats = item.numSeats
 
-    # Validate params...
-    assert num_seats in [2, 6, 9]
-    assert big_blind == small_blind * 2
-    # Min_buyin
-    assert 10 * big_blind <= min_buyin <= 400 * big_blind
-    assert 10 * big_blind <= max_buyin <= 1000 * big_blind
-    assert min_buyin <= max_buyin
-
-    poker_table_obj = poker.PokerTable(
-        small_blind, big_blind, min_buyin, max_buyin, num_seats
-    )
-    table_id = gen_new_table_id()
-    TABLE_STORE[table_id] = poker_table_obj
+    try:
+        # Validate params...
+        assert num_seats in [2, 6, 9]
+        assert big_blind == small_blind * 2
+        # Min_buyin
+        assert 10 * big_blind <= min_buyin <= 400 * big_blind
+        assert 10 * big_blind <= max_buyin <= 1000 * big_blind
+        assert min_buyin <= max_buyin
+        poker_table_obj = poker.PokerTable(
+            small_blind, big_blind, min_buyin, max_buyin, num_seats
+        )
+        table_id = gen_new_table_id()
+        TABLE_STORE[table_id] = poker_table_obj
+    except:
+        err = traceback.format_exc()
+        return {"tableId": None, "success": False, "error": err}
 
     # And cache it!
     # store_table(table_id, poker_table_obj.serialize())
 
     # Does this make sense?  Returning null response for all others
-    return {"tableId": table_id}
+    return {"success": True, "tableId": table_id}
 
 
 @app.get("/getTables")
@@ -284,7 +304,6 @@ async def get_table(table_id: str):
     poker_table_obj = TABLE_STORE[table_id]
 
     players = [pokerutils.build_player_data(seat) for seat in poker_table_obj.seats]
-
     table_info = {
         "tableId": table_id,
         "numSeats": poker_table_obj.num_seats,
@@ -310,7 +329,5 @@ async def get_table(table_id: str):
     return {"table_info": table_info}
 
 
-@app.get("/test")
-async def test_socket():
-    print("Emitting data...")
-    await sio.emit("abc", {"event": "test"})
+# RUN:
+# uvicorn fastapp:socket_app --host 127.0.0.1 --port 8000
