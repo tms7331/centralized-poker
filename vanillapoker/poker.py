@@ -516,7 +516,11 @@ class PokerTable:
         bet_this_street_amounts = [x["bet_street"] for x in self.seats if x is not None]
 
         # TODO - this is hardcoded for 2p
-        self.whose_turn = self.button
+        # Kind of ugly but set it one seat BEFOFE the first to act and then increment -
+        # The issue is that if we have a 3 way pot, and first to act folds on an earlier
+        # street, it will make it so it's their turn
+        self.whose_turn = (self.button - 1) % self.num_seats
+        self._increment_whose_turn()
 
         self.facing_bet = 0
         self.last_raise = 0
@@ -753,25 +757,26 @@ class PokerTable:
         """
         Keep transitioning state until it's time to wait for external action...
         """
-        players = [pokerutils.build_player_data(seat) for seat in self.seats]
-        action = {
-            "tag": "gameState",
-            "potInitial": self.pot_initial,
-            "pot": self.pot_total,
-            "players": players,
-            "button": self.button,
-            "whoseTurn": self.whose_turn,
-            "board": self.board,
-            "handStage": self.hand_stage,
-            "facingBet": self.facing_bet,
-            "lastRaise": self.last_raise,
-            "action": {
-                "type": None,
-                "amount": None,
-            },
-        }
-        self.events.append(action)
-        self.events_pop.append(action)
+        if not self.all_folded():
+            players = [pokerutils.build_player_data(seat) for seat in self.seats]
+            action = {
+                "tag": "gameState",
+                "potInitial": self.pot_initial,
+                "pot": self.pot_total,
+                "players": players,
+                "button": self.button,
+                "whoseTurn": self.whose_turn,
+                "board": self.board,
+                "handStage": self.hand_stage,
+                "facingBet": self.facing_bet,
+                "lastRaise": self.last_raise,
+                "action": {
+                    "type": None,
+                    "amount": None,
+                },
+            }
+            self.events.append(action)
+            self.events_pop.append(action)
 
         if self.hand_stage == HS_SB_POST_STAGE:
             posted = kwargs.get("posted")

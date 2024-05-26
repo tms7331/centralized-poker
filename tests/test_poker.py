@@ -378,6 +378,7 @@ def test_integration_3p_weird_allin(t2, t6):
     assert t.seats[1]["stack"] == 88
     assert t.seats[2]["stack"] == 54
     assert t.seats[3]["stack"] == 104
+    print(t.events)
 
 
 def test_integration_2p_fold_two_hands(t6):
@@ -419,3 +420,32 @@ def test_integration_2p_fold_two_hands(t6):
     assert t.seats[1]["in_hand"]
     assert not t.seats[0]["sitting_out"]
     assert not t.seats[1]["sitting_out"]
+
+
+def test_integration_3p_open_fold(t2, t6):
+    t = t6
+    t._get_showdown_val = lambda x: 10
+    p0 = "0x123"
+    p1 = "0x456"
+    p2 = "0x789"
+    t.join_table(0, 200, p0, False)
+    t.join_table(1, 100, p1, False)
+    t.join_table(2, 50, p2, False)
+
+    t.take_action(poker.ACT_SB_POST, p0, 1)
+    t.take_action(poker.ACT_BB_POST, p1, 2)
+    t.take_action(poker.ACT_CALL, p2, 0)
+    assert t.hand_stage == poker.HS_PREFLOP_BETTING
+    t.take_action(poker.ACT_CALL, p0, 0)
+    assert t.hand_stage == poker.HS_PREFLOP_BETTING
+    t.take_action(poker.ACT_CHECK, p1, 0)
+    assert t.hand_stage == poker.HS_FLOP_BETTING
+    assert len(t.board) == 3
+
+    t.take_action(poker.ACT_FOLD, p0, 0)
+    t.take_action(poker.ACT_CHECK, p1, 0)
+    t.take_action(poker.ACT_CHECK, p2, 0)
+
+    assert t.hand_stage == poker.HS_TURN_BETTING
+    assert len(t.board) == 4
+    assert t.whose_turn == 1
