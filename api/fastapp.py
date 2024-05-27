@@ -140,6 +140,10 @@ class ItemCreateTable(BaseModel):
     numSeats: int
 
 
+class CreateNftItem(BaseModel):
+    address: str
+
+
 @app.post("/joinTable")
 async def join_table(item: ItemJoinTable):
     table_id = item.tableId
@@ -354,14 +358,36 @@ def get_nft_holders():
     [
         {
             "constant": true,
-            "inputs": [{"name": "_tokenId", "type": "uint256"}],
+            "inputs": [{"name": "tokenId", "type": "uint256"}],
             "name": "ownerOf",
             "outputs": [{"name": "owner", "type": "address"}],
             "payable": false,
             "stateMutability": "view",
             "type": "function"
-        },
+        }
     ]
+    """
+
+    nft_contract_abi = """
+        [{
+        "inputs": [
+        {
+            "internalType": "uint256",
+            "name": "tokenId",
+            "type": "uint256"
+        }
+        ],
+        "name": "ownerOf",
+        "outputs": [
+        {
+            "internalType": "address",
+            "name": "",
+            "type": "address"
+        }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+        }]
     """
 
     # Create a contract instance
@@ -369,7 +395,7 @@ def get_nft_holders():
     holders = {}
     # total_supply = nft_contract.functions.totalSupply().call()
     # for token_id in range(total_supply):
-    token_id = 0
+    token_id = 1
     while True:
         try:
             owner = nft_contract.functions.ownerOf(token_id).call()
@@ -401,6 +427,29 @@ async def get_user_nfts(address: str):
 async def get_nft_metadata(tokenId: int):
     # {'cardNumber': 12, 'rarity': 73}
     return nft_map[tokenId]
+
+
+@app.post("/createNewNFT")
+async def create_new_nft(item: CreateNftItem):
+    """
+    This will be called by the front end immediatly before
+    the transaction is sent to the blockchain.  We should
+    return the expected NFT number here.
+    """
+    # So ugly but we need to iterate?
+    next_token_id = 0
+    for owner in nft_owners:
+        for token_id in nft_owners[owner]:
+            next_token_id = max(next_token_id, token_id + 1)
+
+    owner = item.address
+    if owner in nft_owners:
+        nft_owners[owner].append(token_id)
+    else:
+        nft_owners[owner] = [token_id]
+
+    # {'cardNumber': 12, 'rarity': 73}
+    return {"tokenId": next_token_id, "metadata": nft_map[next_token_id]}
 
 
 # RUN:
