@@ -1,3 +1,4 @@
+from web3 import Web3
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,6 +6,7 @@ from pydantic import BaseModel
 from typing import List
 from socketio import AsyncServer, ASGIApp
 from dotenv import load_dotenv
+import os
 import sys
 import traceback
 import json
@@ -343,13 +345,53 @@ async def get_table(tableId: str, handId: int):
     return {"hh": poker_table_obj.hand_histories[handId]}
 
 
+def get_nft_holders():
+    infura_key = os.environ["INFURA_KEY"]
+    w3 = Web3(Web3.HTTPProvider(f"https://base-sepolia.infura.io/v3/{infura_key}"))
+    nft_contract_address = "0xc87716e22EFc71D35717166A83eC0Dc751DbC421"
+
+    nft_contract_abi = """
+    [
+        {
+            "constant": true,
+            "inputs": [{"name": "_tokenId", "type": "uint256"}],
+            "name": "ownerOf",
+            "outputs": [{"name": "owner", "type": "address"}],
+            "payable": false,
+            "stateMutability": "view",
+            "type": "function"
+        },
+    ]
+    """
+
+    # Create a contract instance
+    nft_contract = w3.eth.contract(address=nft_contract_address, abi=nft_contract_abi)
+    holders = {}
+    # total_supply = nft_contract.functions.totalSupply().call()
+    # for token_id in range(total_supply):
+    token_id = 0
+    while True:
+        try:
+            owner = nft_contract.functions.ownerOf(token_id).call()
+            if owner in holders:
+                holders[owner].append(token_id)
+            else:
+                holders[owner] = [token_id]
+            token_id += 1
+        except:
+            print("CRASEHD ON", token_id)
+            break
+
+    return holders
+
+
 # Hardcode this?  Figure out clean way to get it...
-nft_owners = {"0xC52178a1b28AbF7734b259c27956acBFd67d4636": [0]}
+# nft_owners = {"0xC52178a1b28AbF7734b259c27956acBFd67d4636": [0]}
+nft_owners = get_nft_holders()
 
 
 @app.get("/getUserNFTs")
 async def get_user_nfts(address: str):
-
     # Get a list of tokenIds of NFTs this user owns
     user_nfts = nft_owners.get(address, [])
     return {tokenId: nft_map[tokenId] for tokenId in user_nfts}
