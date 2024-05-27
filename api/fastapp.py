@@ -23,33 +23,29 @@ from vanillapoker import poker, pokerutils
 load_dotenv()
 
 
-"""
+def generate_card_properties():
+    """
+    Use PRNG to deterministically generate random properties for the NFTs
+    """
+    import random
 
-# Create a FastAPI instance
-app = FastAPI()
-origins = [
-    "*",
-]
+    random.seed(0)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,  # List of origins that should be allowed
-    allow_credentials=True,
-    allow_methods=[
-        "*"
-    ],  # List of HTTP methods that should be allowed (e.g., GET, POST)
-    allow_headers=["*"],  # List of headers that should be allowed
-)
+    # Map from nft tokenId to properties
+    nft_map = {}
 
-# Create a Socket.IO server
-sio = AsyncServer(async_mode="asgi", cors_allowed_origins=origins)
+    for i in range(1000):
+        # Copying naming convention from solidity contract
+        cardNumber = random.randint(0, 51)
+        rarity = random.randint(1, 100)
+        nft_map[i] = {"cardNumber": cardNumber, "rarity": rarity}
 
-# Wrap the Socket.IO server with ASGIApp
-socket_app = ASGIApp(
-    sio, app, socketio_path="/socket.io"
-)  # , socketio_path="/ws/socket.io")
-# app.mount("/ws", ASGIApp(sio, static_files={"/": "./"}))
-"""
+    return nft_map
+
+
+# Storing NFT metadata properties locally for now - in future pull from chain
+nft_map = generate_card_properties()
+
 
 sio = AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 app = FastAPI()
@@ -345,6 +341,24 @@ async def get_table(tableId: str, handId: int):
         handIds = sorted(list(poker_table_obj.hand_histories.keys()))
         handId = handIds[-1]
     return {"hh": poker_table_obj.hand_histories[handId]}
+
+
+# Hardcode this?  Figure out clean way to get it...
+nft_owners = {"0xC52178a1b28AbF7734b259c27956acBFd67d4636": [0]}
+
+
+@app.get("/getUserNFTs")
+async def get_user_nfts(address: str):
+
+    # Get a list of tokenIds of NFTs this user owns
+    user_nfts = nft_owners.get(address, [])
+    return {tokenId: nft_map[tokenId] for tokenId in user_nfts}
+
+
+@app.get("/getNFTMetadata")
+async def get_nft_metadata(tokenId: int):
+    # {'cardNumber': 12, 'rarity': 73}
+    return nft_map[tokenId]
 
 
 # RUN:
