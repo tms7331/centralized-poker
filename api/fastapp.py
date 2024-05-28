@@ -171,6 +171,11 @@ class CreateNftItem(BaseModel):
     address: str
 
 
+class ItemDeposit(BaseModel):
+    address: str
+    depositAmount: int
+
+
 @app.post("/joinTable")
 async def join_table(item: ItemJoinTable):
     table_id = item.tableId
@@ -530,8 +535,10 @@ class UserBalance(BaseModel):
     inPlay: int
 
 
-@app.put("/balances")
-async def update_balance(balance: UserBalance):
+# @app.put("/balances")
+# async def update_balance(balance: UserBalance):
+async def update_balance(onChainBal, localBal, inPlay, address):
+    # (balance.onChainBal, balance.localBal, balance.inPlay, balance.address),
     connection = await get_db_connection()
     async with connection.cursor() as cursor:
         try:
@@ -541,7 +548,7 @@ async def update_balance(balance: UserBalance):
                 SET onChainBal = %s, localBal = %s, inPlay = %s 
                 WHERE address = %s
             """,
-                (balance.onChainBal, balance.localBal, balance.inPlay, balance.address),
+                (onChainBal, localBal, inPlay, address),
             )
             await connection.commit()
         except Exception as e:
@@ -566,7 +573,6 @@ async def read_balance_one(address: str):
 
 
 async def update():
-
     # plypkr = web3.eth.contract(address=plypkr_address, abi=plypkr_abi)
     token_vault = web3.eth.contract(address=token_vault_address, abi=token_vault_abi)
 
@@ -597,24 +603,20 @@ async def update():
 
 
 @app.post("/deposited")
-async def post_deposited():
+async def post_deposited(item: ItemDeposit):
     """
     After user deposits to contract, update their balance in the database
     """
+    address = item.address
+    deposit_amount = item.depositAmount
     # So get the DIFF between what they have and what we've tracked
 
-    # TODO -
-    # update database with their new token balance...
-
-    # Got it, just get it going
-
-    # onChainBal
-    # localBal
-    # inPlay
-
-    # So get the diff between our current
-
-    return {"data": random.randint(0, 1_000_000)}
+    # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
+    bal = await read_balance_one(address)
+    onChainBalNew = bal.localBal + deposit_amount
+    localBalNew = bal.onChainBal + deposit_amount
+    await update_balance(onChainBalNew, localBalNew, bal.inPlay, address)
+    return {"success": True}
 
 
 @app.get("/getTokenBalance")
