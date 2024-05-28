@@ -164,6 +164,7 @@ class ItemCreateTable(BaseModel):
 
 
 class CreateNftItem(BaseModel):
+    tokenId: int
     address: str
 
 
@@ -422,9 +423,9 @@ def get_nft_holders():
 # Hardcode this?  Figure out clean way to get it...
 # nft_owners = {"0xC52178a1b28AbF7734b259c27956acBFd67d4636": [0]}
 # TODO - reenable this...
-print("SKIPPING NFT_OWNERS...")
-nft_owners = {}
-# nft_owners = get_nft_holders()
+# print("SKIPPING NFT_OWNERS...")
+# nft_owners = {}
+nft_owners = get_nft_holders()
 
 
 @app.get("/getUserNFTs")
@@ -448,10 +449,11 @@ async def create_new_nft(item: CreateNftItem):
     return the expected NFT number here.
     """
     # So ugly but we need to iterate?
-    next_token_id = 0
-    for owner in nft_owners:
-        for token_id in nft_owners[owner]:
-            next_token_id = max(next_token_id, token_id + 1)
+    # next_token_id = 0
+    # for owner in nft_owners:
+    #     for token_id in nft_owners[owner]:
+    #         next_token_id = max(next_token_id, token_id + 1)
+    token_id = item.tokenId
 
     owner = item.address
     if owner in nft_owners:
@@ -461,7 +463,7 @@ async def create_new_nft(item: CreateNftItem):
 
     # {'cardNumber': 12, 'rarity': 73}
     # "tokenId": next_token_id,
-    return nft_map[next_token_id]
+    return nft_map[token_id]
 
 
 async def get_db_connection():
@@ -566,7 +568,7 @@ async def update():
     plypkr_address = "0x8eF85f1eE73444f711cC5EbfB78A61622860bE3B"
     token_vault_address = "0x3F19a833dac7286904304449d226bd63917b15c6"
 
-    plypkr = web3.eth.contract(address=plypkr_address, abi=plypkr_abi)
+    # plypkr = web3.eth.contract(address=plypkr_address, abi=plypkr_abi)
     token_vault = web3.eth.contract(address=token_vault_address, abi=token_vault_abi)
 
     private_key = os.environ["PRIVATE_KEY"]
@@ -578,12 +580,8 @@ async def update():
 
     to = account_address
     amount = 1 * 10**18
-    user = account_address
-    newBalance = 100
     # Step 4: Call the withdraw function on the TokenVault contract
-    withdraw_txn = await token_vault.functions.withdraw(
-        to, amount, user, newBalance
-    ).build_transaction(
+    withdraw_txn = await token_vault.functions.withdraw(to, amount).build_transaction(
         {
             "from": account_address,
             "nonce": web3.eth.get_transaction_count(account_address),
@@ -599,6 +597,54 @@ async def update():
     )
     print(f"Deposit transaction hash: {withdraw_txn_hash.hex()}")
     # await web3.eth.wait_for_transaction_receipt(withdraw_txn_hash)
+
+
+@app.post("/deposited")
+async def post_deposited():
+    """
+    After user deposits to contract, update their balance in the database
+    """
+    # So get the DIFF between what they have and what we've tracked
+
+    # TODO -
+    # update database with their new token balance...
+
+    # Got it, just get it going
+
+    # onChainBal
+    # localBal
+    # inPlay
+
+    # So get the diff between our current
+
+    return {"data": random.randint(0, 1_000_000)}
+
+
+@app.get("/getTokenBalance")
+async def get_token_balance(address: str):
+    # Got it...
+    # pull player information
+    # token balance should be there...
+
+    # TODO - pull from db
+    # question - should we return token balance and inPlay balance separately?
+    return {"data": random.randint(0, 1_000_000)}
+
+
+@app.get("/getEarningRate")
+async def get_earning_rate(address: str):
+    # Get their NFTs - sum up the rarity values and divide by 100?  Or normalize?
+
+    # TODO - add this in...
+
+    # Just sum NFT rarities...
+    return {"data": random.random()}
+
+
+@app.get("/getRealTimeConversion")
+async def get_real_time_conversion():
+    # Divide token count by ETH count ...
+    return {"data": random.random() * 1000}
 
 
 # RUN:
