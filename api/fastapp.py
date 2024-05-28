@@ -36,6 +36,9 @@ load_dotenv()
 infura_key = os.environ["INFURA_KEY"]
 infura_url = f"https://base-sepolia.infura.io/v3/{infura_key}"
 
+web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(infura_url))
+token_vault_address = "0x3F19a833dac7286904304449d226bd63917b15c6"
+
 
 def generate_card_properties():
     """
@@ -548,7 +551,7 @@ async def update_balance(balance: UserBalance):
     return {"message": "Balance updated successfully"}
 
 
-@app.get("/balance_one")
+# @app.get("/balance_one")
 async def read_balance_one(address: str):
     connection = await get_db_connection()
     async with connection.cursor(aiomysql.DictCursor) as cursor:
@@ -563,10 +566,6 @@ async def read_balance_one(address: str):
 
 
 async def update():
-    web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(infura_url))
-
-    plypkr_address = "0x8eF85f1eE73444f711cC5EbfB78A61622860bE3B"
-    token_vault_address = "0x3F19a833dac7286904304449d226bd63917b15c6"
 
     # plypkr = web3.eth.contract(address=plypkr_address, abi=plypkr_abi)
     token_vault = web3.eth.contract(address=token_vault_address, abi=token_vault_abi)
@@ -575,9 +574,7 @@ async def update():
     account = Account.from_key(private_key)
     # account = web3.eth.account.privateKeyToAccount(private_key)
     account_address = account.address
-
     # bal = await plypkr.functions.balanceOf(account_address).call()
-
     to = account_address
     amount = 1 * 10**18
     # Step 4: Call the withdraw function on the TokenVault contract
@@ -622,29 +619,32 @@ async def post_deposited():
 
 @app.get("/getTokenBalance")
 async def get_token_balance(address: str):
-    # Got it...
-    # pull player information
-    # token balance should be there...
-
-    # TODO - pull from db
-    # question - should we return token balance and inPlay balance separately?
-    return {"data": random.randint(0, 1_000_000)}
+    # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
+    bal = await read_balance_one(address)
+    # Their 'localBal' is their available balance, think that's all we need to return?
+    return {"data": bal.get("localBal", 0)}
 
 
 @app.get("/getEarningRate")
 async def get_earning_rate(address: str):
     # Get their NFTs - sum up the rarity values and divide by 100?  Or normalize?
-
-    # TODO - add this in...
-
-    # Just sum NFT rarities...
-    return {"data": random.random()}
+    user_nfts = nft_owners.get(address, [])
+    earning_rate = sum([nft_map[tokenId]["rarity"] for tokenId in user_nfts]) / 100
+    return {"data": earning_rate}
 
 
 @app.get("/getRealTimeConversion")
 async def get_real_time_conversion():
     # Divide token count by ETH count ...
-    return {"data": random.random() * 1000}
+    # TODO - get this count
+    total_tokens = 99999
+
+    # Get the balance in Wei
+    total_eth = await web3.eth.get_balance(token_vault_address)
+    total_eth /= 10**18
+
+    conv = total_tokens / total_eth
+    return {"data": conv}
 
 
 # RUN:
