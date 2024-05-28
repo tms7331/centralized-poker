@@ -39,6 +39,13 @@ infura_url = f"https://base-sepolia.infura.io/v3/{infura_key}"
 web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(infura_url))
 token_vault_address = "0x3F19a833dac7286904304449d226bd63917b15c6"
 
+with open("TokenVault.json", "r") as f:
+    token_vault_abi = json.loads(f.read())
+
+token_vault = web3.eth.contract(address=token_vault_address, abi=token_vault_abi["abi"])
+
+TOTAL_TOKENS = 0
+
 
 def generate_card_properties():
     """
@@ -537,7 +544,7 @@ class UserBalance(BaseModel):
 
 # @app.put("/balances")
 # async def update_balance(balance: UserBalance):
-async def update_balance(onChainBal, localBal, inPlay, address):
+async def update_balance(on_chain_bal_new, local_bal_new, inPlay, address):
     # (balance.onChainBal, balance.localBal, balance.inPlay, balance.address),
     connection = await get_db_connection()
     async with connection.cursor() as cursor:
@@ -548,7 +555,7 @@ async def update_balance(onChainBal, localBal, inPlay, address):
                 SET onChainBal = %s, localBal = %s, inPlay = %s 
                 WHERE address = %s
             """,
-                (onChainBal, localBal, inPlay, address),
+                (on_chain_bal_new, local_bal_new, inPlay, address),
             )
             await connection.commit()
         except Exception as e:
@@ -572,19 +579,53 @@ async def read_balance_one(address: str):
     return balance
 
 
-async def update():
+class WithdrawItem(BaseModel):
+    address: str
+    amount: int
+
+
+@app.post("/withdraw")
+async def withdraw(item: WithdrawItem):
+    # Steps:
+    # 1. Make sure they actually have that amount available
+    # 2. Calculate how much they should get (keep ratios the same)
+    # 3. Update their balance in the database - (only localBal?)
+    # 4. Update total supply
+    # 5. Call the withdraw function on the TokenVault contract
+
+    address = item.address
+    amount = item.amount
+
+    bal_db = await read_balance_one(address)
+    assert bal_db.localBal >= amount
+    # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
+
     # plypkr = web3.eth.contract(address=plypkr_address, abi=plypkr_abi)
-    token_vault = web3.eth.contract(address=token_vault_address, abi=token_vault_abi)
+
+    # 2. seeing how much they should get
+    total_eth = await web3.eth.get_balance(token_vault_address)
+    their_pct = amount / TOTAL_TOKENS
+    # This will be in gwei
+    cashout_amount_eth = their_pct * total_eth
+
+    # 3. Update their balance in the database - (only localBal?)
+    local_bal_new = bal_db.localBal - amount
+    await update_balance(bal_db.onChain, local_bal_new, bal_db.inPlay, address)
+
+    # 4. Update total supply
+    TOTAL_TOKENS -= amount
+
+    # 5. Call the withdraw function on the TokenVault contract
 
     private_key = os.environ["PRIVATE_KEY"]
     account = Account.from_key(private_key)
     # account = web3.eth.account.privateKeyToAccount(private_key)
     account_address = account.address
     # bal = await plypkr.functions.balanceOf(account_address).call()
-    to = account_address
-    amount = 1 * 10**18
     # Step 4: Call the withdraw function on the TokenVault contract
-    withdraw_txn = await token_vault.functions.withdraw(to, amount).build_transaction(
+    withdraw_txn = await token_vault.functions.withdraw(
+        address, cashout_amount_eth
+    ).build_transaction(
         {
             "from": account_address,
             "nonce": web3.eth.get_transaction_count(account_address),
@@ -612,10 +653,12 @@ async def post_deposited(item: ItemDeposit):
     # So get the DIFF between what they have and what we've tracked
 
     # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
-    bal = await read_balance_one(address)
-    onChainBalNew = bal.localBal + deposit_amount
-    localBalNew = bal.onChainBal + deposit_amount
-    await update_balance(onChainBalNew, localBalNew, bal.inPlay, address)
+    bal_db = await read_balance_one(address)
+    on_chain_bal_new = bal_db.localBal + deposit_amount
+    local_bal_new = bal_db.onChainBal + deposit_amount
+    await update_balance(on_chain_bal_new, local_bal_new, bal_db.inPlay, address)
+    # Update local state tally...
+    TOTAL_TOKENS += deposit_amount
     return {"success": True}
 
 
@@ -639,13 +682,16 @@ async def get_earning_rate(address: str):
 async def get_real_time_conversion():
     # Divide token count by ETH count ...
     # TODO - get this count
-    total_tokens = 99999
+    total_tokens = TOTAL_TOKENS
 
     # Get the balance in Wei
     total_eth = await web3.eth.get_balance(token_vault_address)
     total_eth /= 10**18
 
-    conv = total_tokens / total_eth
+    if total_eth > 0:
+        conv = total_tokens / total_eth
+    else:
+        conv = 0
     return {"data": conv}
 
 
