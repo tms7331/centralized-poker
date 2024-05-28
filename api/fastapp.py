@@ -470,8 +470,8 @@ async def get_db_connection():
     connection = await aiomysql.connect(
         host="localhost",
         port=3306,
-        user="flask_user_0123",  # Replace with your MySQL username
-        password="w2Cqb7uNSv!$QXITma8UMGj",  # Replace with your MySQL password
+        user=os.environ["SQL_USER"],
+        password=os.environ["SQL_PASS"],
         db="users",
     )
     return connection
