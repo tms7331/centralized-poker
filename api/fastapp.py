@@ -460,7 +460,8 @@ async def create_new_nft(item: CreateNftItem):
         nft_owners[owner] = [token_id]
 
     # {'cardNumber': 12, 'rarity': 73}
-    return {"tokenId": next_token_id, "metadata": nft_map[next_token_id]}
+    # "tokenId": next_token_id,
+    return nft_map[next_token_id]
 
 
 async def get_db_connection():
