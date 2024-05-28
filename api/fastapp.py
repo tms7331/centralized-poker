@@ -1,17 +1,26 @@
-from web3 import Web3
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi import BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List
-from socketio import AsyncServer, ASGIApp
-from dotenv import load_dotenv
 import os
 import sys
 import traceback
 import json
 import random
 import traceback
+from web3 import Web3, AsyncWeb3
+from eth_account import Account
+from fastapi import (
+    FastAPI,
+    Depends,
+    HTTPException,
+    BackgroundTasks,
+    WebSocket,
+    WebSocketDisconnect,
+)
+import aiomysql
+from contextlib import asynccontextmanager
+from typing import List
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List
+from socketio import AsyncServer, ASGIApp
 from dotenv import load_dotenv
 
 
@@ -23,6 +32,9 @@ from vanillapoker import poker, pokerutils
 
 # Load environment variables from .env file
 load_dotenv()
+
+infura_key = os.environ["INFURA_KEY"]
+infura_url = f"https://base-sepolia.infura.io/v3/{infura_key}"
 
 
 def generate_card_properties():
@@ -50,7 +62,18 @@ nft_map = generate_card_properties()
 
 
 sio = AsyncServer(async_mode="asgi", cors_allowed_origins="*")
-app = FastAPI()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # await database.database.connect()
+    pass
+    yield
+    pass
+    # await database.database.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Add CORS middleware to FastAPI
 app.add_middleware(
@@ -169,11 +192,11 @@ async def leave_table(item: ItemLeaveTable):
         return {"success": False, "error": "Table not found!"}
     poker_table_obj = TABLE_STORE[table_id]
     # poker_table_obj.leave_table(seat_i, player_id)
-    try:
-        poker_table_obj.leave_table_no_seat_i(player_id)
-    except:
-        err = traceback.format_exc()
-        return {"success": False, "error": err}
+    # try:
+    poker_table_obj.leave_table_no_seat_i(player_id)
+    # except:
+    #     err = traceback.format_exc()
+    #     return {"success": False, "error": err}
 
     await ws_emit_actions(table_id, poker_table_obj)
     return {"success": True}
@@ -189,11 +212,11 @@ async def rebuy(item: ItemRebuy):
         return {"success": False, "error": "Table not found!"}
     poker_table_obj = TABLE_STORE[table_id]
     # poker_table_obj.rebuy(seat_i, rebuy_amount, player_id)
-    try:
-        poker_table_obj.rebuy_no_seat_i(rebuy_amount, player_id)
-    except:
-        err = traceback.format_exc()
-        return {"success": False, "error": err}
+    # try:
+    poker_table_obj.rebuy_no_seat_i(rebuy_amount, player_id)
+    # except:
+    #     err = traceback.format_exc()
+    #     return {"success": False, "error": err}
 
     await ws_emit_actions(table_id, poker_table_obj)
     return {"success": True}
@@ -211,11 +234,11 @@ async def take_action(item: ItemTakeAction):
     poker_table_obj = TABLE_STORE[table_id]
     start_hand_stage = poker_table_obj.hand_stage
 
-    try:
-        poker_table_obj.take_action(action_type, player_id, amount)
-    except:
-        err = traceback.format_exc()
-        return {"success": False, "error": err}
+    # try:
+    poker_table_obj.take_action(action_type, player_id, amount)
+    # except:
+    #     err = traceback.format_exc()
+    #     return {"success": False, "error": err}
 
     await ws_emit_actions(table_id, poker_table_obj)
 
@@ -250,22 +273,22 @@ async def create_new_table(item: ItemCreateTable):
     max_buyin = item.maxBuyin
     num_seats = item.numSeats
 
-    try:
-        # Validate params...
-        assert num_seats in [2, 6, 9]
-        assert big_blind == small_blind * 2
-        # Min_buyin
-        assert 10 * big_blind <= min_buyin <= 400 * big_blind
-        assert 10 * big_blind <= max_buyin <= 1000 * big_blind
-        assert min_buyin <= max_buyin
-        poker_table_obj = poker.PokerTable(
-            small_blind, big_blind, min_buyin, max_buyin, num_seats
-        )
-        table_id = gen_new_table_id()
-        TABLE_STORE[table_id] = poker_table_obj
-    except:
-        err = traceback.format_exc()
-        return {"tableId": None, "success": False, "error": err}
+    # try:
+    # Validate params...
+    assert num_seats in [2, 6, 9]
+    assert big_blind == small_blind * 2
+    # Min_buyin
+    assert 10 * big_blind <= min_buyin <= 400 * big_blind
+    assert 10 * big_blind <= max_buyin <= 1000 * big_blind
+    assert min_buyin <= max_buyin
+    poker_table_obj = poker.PokerTable(
+        small_blind, big_blind, min_buyin, max_buyin, num_seats
+    )
+    table_id = gen_new_table_id()
+    TABLE_STORE[table_id] = poker_table_obj
+    # except:
+    #     err = traceback.format_exc()
+    #     return {"tableId": None, "success": False, "error": err}
 
     # And cache it!
     # store_table(table_id, poker_table_obj.serialize())
@@ -350,23 +373,8 @@ async def get_table(tableId: str, handId: int):
 
 
 def get_nft_holders():
-    infura_key = os.environ["INFURA_KEY"]
-    w3 = Web3(Web3.HTTPProvider(f"https://base-sepolia.infura.io/v3/{infura_key}"))
+    w3 = Web3(Web3.HTTPProvider(infura_url))
     nft_contract_address = "0xc87716e22EFc71D35717166A83eC0Dc751DbC421"
-
-    nft_contract_abi = """
-    [
-        {
-            "constant": true,
-            "inputs": [{"name": "tokenId", "type": "uint256"}],
-            "name": "ownerOf",
-            "outputs": [{"name": "owner", "type": "address"}],
-            "payable": false,
-            "stateMutability": "view",
-            "type": "function"
-        }
-    ]
-    """
 
     nft_contract_abi = """
         [{
@@ -413,7 +421,10 @@ def get_nft_holders():
 
 # Hardcode this?  Figure out clean way to get it...
 # nft_owners = {"0xC52178a1b28AbF7734b259c27956acBFd67d4636": [0]}
-nft_owners = get_nft_holders()
+# TODO - reenable this...
+print("SKIPPING NFT_OWNERS...")
+nft_owners = {}
+# nft_owners = get_nft_holders()
 
 
 @app.get("/getUserNFTs")
@@ -450,6 +461,143 @@ async def create_new_nft(item: CreateNftItem):
 
     # {'cardNumber': 12, 'rarity': 73}
     return {"tokenId": next_token_id, "metadata": nft_map[next_token_id]}
+
+
+async def get_db_connection():
+    connection = await aiomysql.connect(
+        host="localhost",
+        port=3306,
+        user="flask_user_0123",  # Replace with your MySQL username
+        password="w2Cqb7uNSv!$QXITma8UMGj",  # Replace with your MySQL password
+        db="users",
+    )
+    return connection
+
+
+@app.get("/users")
+async def read_users():
+    connection = await get_db_connection()
+    async with connection.cursor(aiomysql.DictCursor) as cursor:
+        await cursor.execute("SELECT * FROM user_balances")
+        users = await cursor.fetchall()
+    connection.close()
+    print("GOT USERS", users)
+    return users
+
+
+class User(BaseModel):
+    address: str
+    onChainBal: int
+    localBal: int
+    inPlay: int
+
+
+@app.post("/users")
+async def create_user(user: User):
+    connection = await get_db_connection()
+    async with connection.cursor() as cursor:
+        try:
+            await cursor.execute(
+                """
+                INSERT INTO user_balances (address, onChainBal, localBal, inPlay) 
+                VALUES (%s, %s, %s, %s)
+            """,
+                (
+                    user.address,
+                    user.onChainBal,
+                    user.localBal,
+                    user.inPlay,
+                ),
+            )
+            await connection.commit()
+        except Exception as e:
+            await connection.rollback()
+            raise HTTPException(status_code=400, detail="Error creating user") from e
+    connection.close()
+    return {"message": "User created successfully"}
+
+
+class UserBalance(BaseModel):
+    address: str
+    onChainBal: int
+    localBal: int
+    inPlay: int
+
+
+@app.put("/balances")
+async def update_balance(balance: UserBalance):
+    connection = await get_db_connection()
+    async with connection.cursor() as cursor:
+        try:
+            await cursor.execute(
+                """
+                UPDATE user_balances 
+                SET onChainBal = %s, localBal = %s, inPlay = %s 
+                WHERE address = %s
+            """,
+                (balance.onChainBal, balance.localBal, balance.inPlay, balance.address),
+            )
+            await connection.commit()
+        except Exception as e:
+            await connection.rollback()
+            raise HTTPException(status_code=400, detail="Error updating balance") from e
+    connection.close()
+    return {"message": "Balance updated successfully"}
+
+
+@app.get("/balance_one")
+async def read_balance_one(address: str):
+    connection = await get_db_connection()
+    async with connection.cursor(aiomysql.DictCursor) as cursor:
+        await cursor.execute(
+            "SELECT * FROM user_balances WHERE address = %s", (address,)
+        )
+        balance = await cursor.fetchone()
+        if balance is None:
+            raise HTTPException(status_code=404, detail="User not found")
+    connection.close()
+    return balance
+
+
+async def update():
+    web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(infura_url))
+
+    plypkr_address = "0x8eF85f1eE73444f711cC5EbfB78A61622860bE3B"
+    token_vault_address = "0x3F19a833dac7286904304449d226bd63917b15c6"
+
+    plypkr = web3.eth.contract(address=plypkr_address, abi=plypkr_abi)
+    token_vault = web3.eth.contract(address=token_vault_address, abi=token_vault_abi)
+
+    private_key = os.environ["PRIVATE_KEY"]
+    account = Account.from_key(private_key)
+    # account = web3.eth.account.privateKeyToAccount(private_key)
+    account_address = account.address
+
+    # bal = await plypkr.functions.balanceOf(account_address).call()
+
+    to = account_address
+    amount = 1 * 10**18
+    user = account_address
+    newBalance = 100
+    # Step 4: Call the withdraw function on the TokenVault contract
+    withdraw_txn = await token_vault.functions.withdraw(
+        to, amount, user, newBalance
+    ).build_transaction(
+        {
+            "from": account_address,
+            "nonce": web3.eth.get_transaction_count(account_address),
+            # "gas": 2000000,
+            # "gasPrice": web3.to_wei("50", "gwei"),
+        }
+    )
+    signed_withdraw_txn = await web3.eth.account.sign_transaction(
+        withdraw_txn, private_key=private_key
+    )
+    withdraw_txn_hash = await web3.eth.send_raw_transaction(
+        signed_withdraw_txn.rawTransaction
+    )
+    print(f"Deposit transaction hash: {withdraw_txn_hash.hex()}")
+    # await web3.eth.wait_for_transaction_receipt(withdraw_txn_hash)
 
 
 # RUN:
