@@ -517,8 +517,6 @@ async def read_users():
         users = await cursor.fetchall()
     connection.close()
     # [{"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}]
-    for user in users:
-        TOTAL_TOKENS += user["localBal"]
     print("GOT USERS", users)
     return users
 
@@ -620,10 +618,9 @@ async def withdraw(item: WithdrawItem):
 
     # They should not be able to withdraw if they don't have a balance, so
     # let this one fail
-    """
     bal_db = await read_balance_one(address)
     assert bal_db["localBal"] >= amount
-    """
+
     # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
 
     # plypkr = web3.eth.contract(address=plypkr_address, abi=plypkr_abi)
@@ -636,14 +633,14 @@ async def withdraw(item: WithdrawItem):
     # This will be in gwei
     cashout_amount_eth = int(their_pct * total_eth)
 
-    """
+
     # 3. Update their balance in the database - (only localBal?)
     local_bal_new = bal_db["localBal"] - amount
     await update_balance(bal_db["onChainBal"], local_bal_new, bal_db["inPlay"], address)
 
     # 4. Update total supply
     TOTAL_TOKENS -= amount
-    """
+
 
     # 5. Call the withdraw function on the TokenVault contract
     private_key = os.environ["PRIVATE_KEY"]
@@ -653,17 +650,20 @@ async def withdraw(item: WithdrawItem):
     # bal = await plypkr.functions.balanceOf(account_address).call()
     # Step 4: Call the withdraw function on the TokenVault contract
     print("CASHING OUT...", address, cashout_amount_eth)
+
+    nonce = await web3.eth.get_transaction_count(account_address)
+    address = Web3.to_checksum_address(address)
     withdraw_txn = await token_vault.functions.withdraw(
         address, cashout_amount_eth
     ).build_transaction(
         {
             "from": account_address,
-            "nonce": web3.eth.get_transaction_count(account_address),
+            "nonce": nonce,
             # "gas": 2000000,
             # "gasPrice": web3.to_wei("50", "gwei"),
         }
     )
-    signed_withdraw_txn = await web3.eth.account.sign_transaction(
+    signed_withdraw_txn = web3.eth.account.sign_transaction(
         withdraw_txn, private_key=private_key
     )
     withdraw_txn_hash = await web3.eth.send_raw_transaction(
@@ -671,6 +671,7 @@ async def withdraw(item: WithdrawItem):
     )
     print(f"Deposit transaction hash: {withdraw_txn_hash.hex()}")
     # await web3.eth.wait_for_transaction_receipt(withdraw_txn_hash)
+    return {"success": True}
 
 
 @app.post("/deposited")
