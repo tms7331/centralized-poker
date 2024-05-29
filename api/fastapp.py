@@ -180,7 +180,7 @@ class CreateNftItem(BaseModel):
 
 class ItemDeposit(BaseModel):
     address: str
-    depositAmount: int
+    depositAmount: str
 
 
 @app.post("/joinTable")
@@ -431,6 +431,8 @@ def get_nft_holders():
         except:
             print("CRASEHD ON", token_id)
             break
+    global TOTAL_TOKENS
+    TOTAL_TOKENS += token_id * 1000
 
     return holders
 
@@ -476,6 +478,19 @@ async def create_new_nft(item: CreateNftItem):
     else:
         nft_owners[owner] = [token_id]
 
+    global TOTAL_TOKENS
+    TOTAL_TOKENS += 1000
+    try:
+        bal_db = await read_balance_one(owner)
+        local_bal_new = bal_db["localBal"] + 500
+        await update_balance(
+            bal_db["onChainBal"], local_bal_new, bal_db["inPlay"], owner
+        )
+    except:
+        # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
+        local_bal_new = 1000
+        await create_user(owner, 0, local_bal_new, 0)
+
     # {'cardNumber': 12, 'rarity': 73}
     # "tokenId": next_token_id,
     return nft_map[token_id]
@@ -492,13 +507,18 @@ async def get_db_connection():
     return connection
 
 
+# Keep this call for debugging...
 @app.get("/users")
 async def read_users():
+    global TOTAL_TOKENS
     connection = await get_db_connection()
     async with connection.cursor(aiomysql.DictCursor) as cursor:
         await cursor.execute("SELECT * FROM user_balances")
         users = await cursor.fetchall()
     connection.close()
+    # [{"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}]
+    for user in users:
+        TOTAL_TOKENS += user["localBal"]
     print("GOT USERS", users)
     return users
 
@@ -510,8 +530,9 @@ class User(BaseModel):
     inPlay: int
 
 
-@app.post("/users")
-async def create_user(user: User):
+# @app.post("/users")
+# async def create_user(user: User):
+async def create_user(address, on_chain_bal, local_bal, in_play):
     connection = await get_db_connection()
     async with connection.cursor() as cursor:
         try:
@@ -520,12 +541,7 @@ async def create_user(user: User):
                 INSERT INTO user_balances (address, onChainBal, localBal, inPlay) 
                 VALUES (%s, %s, %s, %s)
             """,
-                (
-                    user.address,
-                    user.onChainBal,
-                    user.localBal,
-                    user.inPlay,
-                ),
+                (address, str(on_chain_bal), str(local_bal), str(in_play)),
             )
             await connection.commit()
         except Exception as e:
@@ -555,7 +571,7 @@ async def update_balance(on_chain_bal_new, local_bal_new, inPlay, address):
                 SET onChainBal = %s, localBal = %s, inPlay = %s 
                 WHERE address = %s
             """,
-                (on_chain_bal_new, local_bal_new, inPlay, address),
+                (str(on_chain_bal_new), str(local_bal_new), str(inPlay), address),
             )
             await connection.commit()
         except Exception as e:
@@ -575,6 +591,10 @@ async def read_balance_one(address: str):
         balance = await cursor.fetchone()
         if balance is None:
             raise HTTPException(status_code=404, detail="User not found")
+        # db entries are now strings
+        balance["onChainBal"] = int(balance["onChainBal"])
+        balance["localBal"] = int(balance["localBal"])
+        balance["inPlay"] = int(balance["inPlay"])
     connection.close()
     return balance
 
@@ -586,6 +606,8 @@ class WithdrawItem(BaseModel):
 
 @app.post("/withdraw")
 async def withdraw(item: WithdrawItem):
+    # Amount should be TOKEN amount!!!  Not eth!
+
     # Steps:
     # 1. Make sure they actually have that amount available
     # 2. Calculate how much they should get (keep ratios the same)
@@ -596,33 +618,41 @@ async def withdraw(item: WithdrawItem):
     address = item.address
     amount = item.amount
 
+    # They should not be able to withdraw if they don't have a balance, so
+    # let this one fail
+    """
     bal_db = await read_balance_one(address)
-    assert bal_db.localBal >= amount
+    assert bal_db["localBal"] >= amount
+    """
     # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
 
     # plypkr = web3.eth.contract(address=plypkr_address, abi=plypkr_abi)
 
     # 2. seeing how much they should get
     total_eth = await web3.eth.get_balance(token_vault_address)
+
+    global TOTAL_TOKENS
     their_pct = amount / TOTAL_TOKENS
     # This will be in gwei
-    cashout_amount_eth = their_pct * total_eth
+    cashout_amount_eth = int(their_pct * total_eth)
 
+    """
     # 3. Update their balance in the database - (only localBal?)
-    local_bal_new = bal_db.localBal - amount
-    await update_balance(bal_db.onChain, local_bal_new, bal_db.inPlay, address)
+    local_bal_new = bal_db["localBal"] - amount
+    await update_balance(bal_db["onChainBal"], local_bal_new, bal_db["inPlay"], address)
 
     # 4. Update total supply
     TOTAL_TOKENS -= amount
+    """
 
     # 5. Call the withdraw function on the TokenVault contract
-
     private_key = os.environ["PRIVATE_KEY"]
     account = Account.from_key(private_key)
     # account = web3.eth.account.privateKeyToAccount(private_key)
     account_address = account.address
     # bal = await plypkr.functions.balanceOf(account_address).call()
     # Step 4: Call the withdraw function on the TokenVault contract
+    print("CASHING OUT...", address, cashout_amount_eth)
     withdraw_txn = await token_vault.functions.withdraw(
         address, cashout_amount_eth
     ).build_transaction(
@@ -650,13 +680,32 @@ async def post_deposited(item: ItemDeposit):
     """
     address = item.address
     deposit_amount = item.depositAmount
+    deposit_amount = int(deposit_amount)
     # So get the DIFF between what they have and what we've tracked
 
+    global TOTAL_TOKENS
+
+    # Get the balance in Wei
+    total_eth = await web3.eth.get_balance(token_vault_address)
+    deposit_share = deposit_amount / total_eth
+    token_amount = int(deposit_share * TOTAL_TOKENS)
+    TOTAL_TOKENS += token_amount
+    print("GOT VALUES")
+    print(deposit_amount, total_eth, deposit_share, token_amount)
+
     # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
-    bal_db = await read_balance_one(address)
-    on_chain_bal_new = bal_db.localBal + deposit_amount
-    local_bal_new = bal_db.onChainBal + deposit_amount
-    await update_balance(on_chain_bal_new, local_bal_new, bal_db.inPlay, address)
+    try:
+        bal_db = await read_balance_one(address)
+        on_chain_bal_new = bal_db["onChainBal"] + deposit_amount
+        local_bal_new = bal_db["localBal"] + token_amount
+        await update_balance(on_chain_bal_new, local_bal_new, bal_db["inPlay"], address)
+    except:
+        # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
+        on_chain_bal_new = deposit_amount
+        local_bal_new = token_amount
+        print("CREATING NEW USER...", address, on_chain_bal_new, local_bal_new, 0)
+        await create_user(address, on_chain_bal_new, local_bal_new, 0)
+
     # Update local state tally...
     TOTAL_TOKENS += deposit_amount
     return {"success": True}
@@ -665,7 +714,13 @@ async def post_deposited(item: ItemDeposit):
 @app.get("/getTokenBalance")
 async def get_token_balance(address: str):
     # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
-    bal = await read_balance_one(address)
+    try:
+        bal = await read_balance_one(address)
+    except:
+        return {"data": 0}
+    print("GOT TOKEN BALANCE", bal)
+    user_bal = bal.get("localBal", 0)
+    user_bal = 0 if not user_bal else user_bal
     # Their 'localBal' is their available balance, think that's all we need to return?
     return {"data": bal.get("localBal", 0)}
 
@@ -686,13 +741,32 @@ async def get_real_time_conversion():
 
     # Get the balance in Wei
     total_eth = await web3.eth.get_balance(token_vault_address)
-    total_eth /= 10**18
+    total_eth = total_eth / 10**18
 
     if total_eth > 0:
         conv = total_tokens / total_eth
     else:
-        conv = 0
-    return {"data": conv}
+        conv = 100_000
+    return {"data": conv, "total_tokens": total_tokens, "total_eth": total_eth}
+
+
+@app.get("/get_leaderboard")
+async def get_leaderboard():
+    global TOTAL_TOKENS
+    connection = await get_db_connection()
+    async with connection.cursor(aiomysql.DictCursor) as cursor:
+        await cursor.execute("SELECT * FROM user_balances")
+        users = await cursor.fetchall()
+    connection.close()
+    # [{"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}]
+    leaders = []
+    for user in users:
+        if len(user["address"]) == 42:
+            leaders.append(
+                {"address": user["address"], "balance": int(user["localBal"])}
+            )
+    print("GOT USERS", users)
+    return {"leaderboard": leaders}
 
 
 # RUN:
