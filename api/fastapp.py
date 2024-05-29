@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import traceback
 import json
 import random
@@ -42,7 +43,37 @@ token_vault_address = "0x10CA589B8E1d4aeD323c6aDB02D7aB7910ba25A9"
 with open("TokenVault.json", "r") as f:
     token_vault_abi = json.loads(f.read())
 
+
+nft_contract_address = "0xc87716e22EFc71D35717166A83eC0Dc751DbC421"
+nft_contract_abi = """
+    [{
+    "inputs": [
+    {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+    }
+    ],
+    "name": "ownerOf",
+    "outputs": [
+    {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+    }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+    }]
+"""
+
+# Create a contract instance
+nft_contract_async = web3.eth.contract(
+    address=nft_contract_address, abi=nft_contract_abi
+)
 token_vault = web3.eth.contract(address=token_vault_address, abi=token_vault_abi["abi"])
+
+START_TIME = time.time()
 
 TOTAL_TOKENS = 0
 
@@ -62,13 +93,15 @@ def generate_card_properties():
         # Copying naming convention from solidity contract
         cardNumber = random.randint(0, 51)
         rarity = random.randint(1, 100)
-        nft_map[i] = {"cardNumber": cardNumber, "rarity": rarity}
+        nft_map[i] = {"cardNumber": cardNumber, "rarity": rarity, "forSale": False}
 
     return nft_map
 
 
 # Storing NFT metadata properties locally for now - in future pull from chain
 nft_map = generate_card_properties()
+# Track true/false - listed for sale?
+nft_listings_map = {}
 
 
 sio = AsyncServer(async_mode="asgi", cors_allowed_origins="*")
@@ -186,7 +219,7 @@ class ItemDeposit(BaseModel):
 @app.post("/joinTable")
 async def join_table(item: ItemJoinTable):
     table_id = item.tableId
-    player_id = item.address
+    player_id = Web3.to_checksum_address(item.address)
     deposit_amount = item.depositAmount
     seat_i = item.seatI
     if table_id not in TABLE_STORE:
@@ -202,7 +235,7 @@ async def join_table(item: ItemJoinTable):
 @app.post("/leaveTable")
 async def leave_table(item: ItemLeaveTable):
     table_id = item.tableId
-    player_id = item.address
+    player_id = Web3.to_checksum_address(item.address)
     seat_i = item.seatI
     if table_id not in TABLE_STORE:
         return {"success": False, "error": "Table not found!"}
@@ -221,7 +254,7 @@ async def leave_table(item: ItemLeaveTable):
 @app.post("/rebuy")
 async def rebuy(item: ItemRebuy):
     table_id = item.tableId
-    player_id = item.address
+    player_id = Web3.to_checksum_address(item.address)
     rebuy_amount = item.rebuyAmount
     seat_i = item.seatI
     if table_id not in TABLE_STORE:
@@ -241,7 +274,7 @@ async def rebuy(item: ItemRebuy):
 @app.post("/takeAction")
 async def take_action(item: ItemTakeAction):
     table_id = item.tableId
-    player_id = item.address
+    player_id = Web3.to_checksum_address(item.address)
     seat_i = item.seatI
     action_type = int(item.actionType)
     amount = int(item.amount)
@@ -389,9 +422,9 @@ async def get_table(tableId: str, handId: int):
 
 
 def get_nft_holders():
+    # Fine for this to be non-async, only runs on startup
     w3 = Web3(Web3.HTTPProvider(infura_url))
     nft_contract_address = "0xc87716e22EFc71D35717166A83eC0Dc751DbC421"
-
     nft_contract_abi = """
         [{
         "inputs": [
@@ -448,13 +481,18 @@ nft_owners = get_nft_holders()
 @app.get("/getUserNFTs")
 async def get_user_nfts(address: str):
     # Get a list of tokenIds of NFTs this user owns
+    address = Web3.to_checksum_address(address)
     user_nfts = nft_owners.get(address, [])
-    return {tokenId: nft_map[tokenId] for tokenId in user_nfts}
+    ret_data = {tokenId: nft_map[tokenId] for tokenId in user_nfts}
+    for tokenId in user_nfts:
+        ret_data[tokenId]["forSale"] = tokenId in nft_listings_map
+    return ret_data
 
 
 @app.get("/getNFTMetadata")
 async def get_nft_metadata(tokenId: int):
     # {'cardNumber': 12, 'rarity': 73}
+    nft_map[tokenId]["forSale"] = tokenId in nft_listings_map
     return nft_map[tokenId]
 
 
@@ -472,7 +510,7 @@ async def create_new_nft(item: CreateNftItem):
     #         next_token_id = max(next_token_id, token_id + 1)
     token_id = item.tokenId
 
-    owner = item.address
+    owner = Web3.to_checksum_address(item.address)
     if owner in nft_owners:
         nft_owners[owner].append(token_id)
     else:
@@ -531,6 +569,7 @@ class User(BaseModel):
 # @app.post("/users")
 # async def create_user(user: User):
 async def create_user(address, on_chain_bal, local_bal, in_play):
+    address = Web3.to_checksum_address(address)
     connection = await get_db_connection()
     async with connection.cursor() as cursor:
         try:
@@ -560,6 +599,7 @@ class UserBalance(BaseModel):
 # async def update_balance(balance: UserBalance):
 async def update_balance(on_chain_bal_new, local_bal_new, inPlay, address):
     # (balance.onChainBal, balance.localBal, balance.inPlay, balance.address),
+    address = Web3.to_checksum_address(address)
     connection = await get_db_connection()
     async with connection.cursor() as cursor:
         try:
@@ -582,6 +622,7 @@ async def update_balance(on_chain_bal_new, local_bal_new, inPlay, address):
 # @app.get("/balance_one")
 async def read_balance_one(address: str):
     connection = await get_db_connection()
+    address = Web3.to_checksum_address(address)
     async with connection.cursor(aiomysql.DictCursor) as cursor:
         await cursor.execute(
             "SELECT * FROM user_balances WHERE address = %s", (address,)
@@ -613,7 +654,7 @@ async def withdraw(item: WithdrawItem):
     # 4. Update total supply
     # 5. Call the withdraw function on the TokenVault contract
 
-    address = item.address
+    address = Web3.to_checksum_address(item.address)
     amount = item.amount
 
     # They should not be able to withdraw if they don't have a balance, so
@@ -633,14 +674,12 @@ async def withdraw(item: WithdrawItem):
     # This will be in gwei
     cashout_amount_eth = int(their_pct * total_eth)
 
-
     # 3. Update their balance in the database - (only localBal?)
     local_bal_new = bal_db["localBal"] - amount
     await update_balance(bal_db["onChainBal"], local_bal_new, bal_db["inPlay"], address)
 
     # 4. Update total supply
     TOTAL_TOKENS -= amount
-
 
     # 5. Call the withdraw function on the TokenVault contract
     private_key = os.environ["PRIVATE_KEY"]
@@ -679,7 +718,7 @@ async def post_deposited(item: ItemDeposit):
     """
     After user deposits to contract, update their balance in the database
     """
-    address = item.address
+    address = Web3.to_checksum_address(item.address)
     deposit_amount = item.depositAmount
     deposit_amount = int(deposit_amount)
     # So get the DIFF between what they have and what we've tracked
@@ -715,6 +754,7 @@ async def post_deposited(item: ItemDeposit):
 @app.get("/getTokenBalance")
 async def get_token_balance(address: str):
     # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
+    address = Web3.to_checksum_address(address)
     try:
         bal = await read_balance_one(address)
     except:
@@ -722,13 +762,31 @@ async def get_token_balance(address: str):
     print("GOT TOKEN BALANCE", bal)
     user_bal = bal.get("localBal", 0)
     user_bal = 0 if not user_bal else user_bal
+    time_elapsed = time.time() - START_TIME
+
+    user_nfts = nft_owners.get(address, [])
+    earning_rate = sum([nft_map[tokenId]["rarity"] for tokenId in user_nfts]) / 100
+
+    # Annualized rate
+    earnings_pct = (time_elapsed / (60 * 60 * 24 * 365)) * earning_rate
+    real_rate = int(earnings_pct * TOTAL_TOKENS)
+    use_rate = real_rate
+    # Set a minimum rate of 1 token every 30 seconds?
+    if earning_rate > 0:
+        tokens_per_day = (60 * 60 * 24) / 30
+        days_elapsed = time_elapsed / (60 * 60 * 24)
+        fake_rate = int(days_elapsed * tokens_per_day)
+        use_rate = max(real_rate, fake_rate)
+    user_bal += use_rate
+
     # Their 'localBal' is their available balance, think that's all we need to return?
-    return {"data": bal.get("localBal", 0)}
+    return {"data": user_bal}
 
 
 @app.get("/getEarningRate")
 async def get_earning_rate(address: str):
     # Get their NFTs - sum up the rarity values and divide by 100?  Or normalize?
+    address = Web3.to_checksum_address(address)
     user_nfts = nft_owners.get(address, [])
     earning_rate = sum([nft_map[tokenId]["rarity"] for tokenId in user_nfts]) / 100
     return {"data": earning_rate}
@@ -768,6 +826,183 @@ async def get_leaderboard():
             )
     print("GOT USERS", users)
     return {"leaderboard": leaders}
+
+
+@app.post("/updateTokenBalances")
+async def update_token_balances():
+    """
+    Before shutting down - call this ONCE so we track updated balances
+    """
+    connection = await get_db_connection()
+    async with connection.cursor(aiomysql.DictCursor) as cursor:
+        await cursor.execute("SELECT * FROM user_balances")
+        users = await cursor.fetchall()
+    connection.close()
+
+    for bal_db in users:
+        user_bal = bal_db.get("localBal", 0)
+        user_bal = 0 if not user_bal else user_bal
+        time_elapsed = time.time() - START_TIME
+
+        user_nfts = nft_owners.get(bal_db["address"], [])
+        earning_rate = sum([nft_map[tokenId]["rarity"] for tokenId in user_nfts]) / 100
+        # Annualized rate
+        earnings_pct = (time_elapsed / (60 * 60 * 24 * 365)) * earning_rate
+        user_bal += int(earnings_pct * TOTAL_TOKENS)
+        local_bal_new = user_bal
+
+        await update_balance(
+            bal_db["onChainBal"], local_bal_new, bal_db["inPlay"], bal_db["address"]
+        )
+    return {"success": True}
+
+
+class ItemTransferNFT(BaseModel):
+    from_: str
+    to_: str
+    tokenId: int
+
+
+# @app.post("/transferNFT")
+# async def transfer_nft(item: ItemTransferNFT):
+async def transfer_nft(from_, to_, tokenId):
+    # Endpoint (plus many others) need to be secured so users can't directly call this endpoint
+    # from_ = item.from_
+    from_ = Web3.to_checksum_address(from_)
+    # to_ = item.to_
+    to_ = Web3.to_checksum_address(to_)
+    # tokenId = item.tokenId
+
+    # Our call...
+    # nft_contract.transferFrom(from_, to_, tokenId)
+
+    # 5. Call the withdraw function on the TokenVault contract
+    private_key = os.environ["PRIVATE_KEY"]
+    account = Account.from_key(private_key)
+    # account = web3.eth.account.privateKeyToAccount(private_key)
+    account_address = account.address
+    # bal = await plypkr.functions.balanceOf(account_address).call()
+    # Step 4: Call the withdraw function on the TokenVault contract
+    nonce = await web3.eth.get_transaction_count(account_address)
+
+    transfer_txn = await nft_contract_async.functions.transferFrom(
+        from_, to_, tokenId
+    ).build_transaction(
+        {
+            "from": account_address,
+            "nonce": nonce,
+            # "gas": 2000000,
+            # "gasPrice": web3.to_wei("50", "gwei"),
+        }
+    )
+
+    signed_withdraw_txn = web3.eth.account.sign_transaction(
+        transfer_txn, private_key=private_key
+    )
+    withdraw_txn_hash = await web3.eth.send_raw_transaction(
+        signed_withdraw_txn.rawTransaction
+    )
+    print(f"Deposit transaction hash: {withdraw_txn_hash.hex()}")
+    # await web3.eth.wait_for_transaction_receipt(withdraw_txn_hash)
+    return {"success": True}
+
+
+class ItemListNFT(BaseModel):
+    address: str
+    tokenId: int
+    amount: int
+
+
+@app.post("/listNFT")
+async def list_nft(item: ItemListNFT):
+    """
+    Lets a user put an NFT for sale on the marketplace
+    Need to secure this endpoint too...
+    """
+    # Ensure user owns this nft before listing it
+    address = Web3.to_checksum_address(item.address)
+    user_nfts = nft_owners.get(address, [])
+    assert item.tokenId in user_nfts, "User does not own nft!"
+    nft_listings_map[item.tokenId] = {"seller": address, "amount": item.amount}
+    nft_map[item.tokenId]["forSale"] = True
+    return {"success": True}
+
+
+class ItemBuyNFT(BaseModel):
+    addressBuyer: str
+    tokenId: int
+
+
+class ItemCancelNFT(BaseModel):
+    address: str
+    tokenId: int
+
+
+@app.post("/cancelListing")
+async def cancel_listing(item: ItemCancelNFT):
+    nft_map[item.tokenId]["forSale"] = False
+    try:
+        nft_listings_map.pop(item.tokenId)
+    except:
+        pass
+    return {"success": True}
+
+
+@app.post("/buyNFT")
+async def buy_nft(item: ItemBuyNFT):
+    # Completes a trade...
+    nft_data = nft_listings_map[item.tokenId]
+    # nft_data["seller"]
+    # nft_data["amount"]
+
+    # In DB - change token balances of each user involved
+    bal_db_seller = await read_balance_one(item.addressBuyer)
+    bal_db_buyer = await read_balance_one(nft_data["seller"])
+
+    # Buyer MUST have enough funds to buy it...
+    # [{"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}]
+    assert bal_db_buyer["localBal"] >= nft_data["amount"]
+
+    # Do this first, since they might not have called 'approve' on the nft
+    await transfer_nft(nft_data["seller"], item.addressBuyer, item.tokenId)
+
+    await update_balance(
+        bal_db_buyer["onChainBal"],
+        bal_db_buyer["localBal"] - nft_data["amount"],
+        bal_db_buyer["inPlay"],
+        bal_db_buyer["address"],
+    )
+    await update_balance(
+        bal_db_seller["onChainBal"],
+        bal_db_seller["localBal"] + nft_data["amount"],
+        bal_db_seller["inPlay"],
+        bal_db_seller["address"],
+    )
+
+    # And need to update our local mapping too
+    if item.addressBuyer not in nft_owners:
+        nft_owners[item.addressBuyer] = []
+    nft_owners[item.addressBuyer].append(item.tokenId)
+    nft_owners[nft_data["seller"]].remove(item.tokenId)
+    nft_map[item.tokenId]["forSale"] = False
+    nft_listings_map.pop(item.tokenId)
+
+
+@app.get("/getListings")
+async def get_listings():
+    ret_data = []
+    # {"seller": item.address, "amount": item.amount}
+    for tokenId in nft_listings_map:
+        nft_listings_map[tokenId]
+        ret_data.append(
+            {
+                "tokenId": tokenId,
+                "seller": nft_listings_map[tokenId]["seller"],
+                "amount": nft_listings_map[tokenId]["amount"],
+                "metadata": nft_map[tokenId],
+            }
+        )
+    return {"data": ret_data}
 
 
 # RUN:
