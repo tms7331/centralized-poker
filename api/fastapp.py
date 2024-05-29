@@ -37,7 +37,7 @@ infura_key = os.environ["INFURA_KEY"]
 infura_url = f"https://base-sepolia.infura.io/v3/{infura_key}"
 
 web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(infura_url))
-token_vault_address = "0x3F19a833dac7286904304449d226bd63917b15c6"
+token_vault_address = "0x10CA589B8E1d4aeD323c6aDB02D7aB7910ba25A9"
 
 with open("TokenVault.json", "r") as f:
     token_vault_abi = json.loads(f.read())
