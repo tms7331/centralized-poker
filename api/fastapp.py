@@ -342,6 +342,7 @@ async def take_action(item: ItemTakeAction):
 
 def gen_new_table_id():
     table_id = None
+    random.seed(int(time.time()))
     while not table_id or table_id in TABLE_STORE:
         table_id = 10000 + int(random.random() * 990000)
     return str(table_id)
@@ -463,7 +464,7 @@ def get_nft_holders():
     nft_contract = w3.eth.contract(address=nft_contract_address, abi=nft_contract_abi)
     # Cache previous one to save on calls...
     # fmt: off
-    holders = {'0xD9F8bf1F266E50Bb4dE528007f28c14bb7edaff7': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 101, 102, 103, 104, 105], '0xC52178a1b28AbF7734b259c27956acBFd67d4636': [41, 47, 96, 97, 98, 99, 100, 106], '0x534631Bcf33BDb069fB20A93d2fdb9e4D4dD42CF': [48]}
+    holders = {'0xD9F8bf1F266E50Bb4dE528007f28c14bb7edaff7': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 101, 102, 103, 104, 105, 107], '0xC52178a1b28AbF7734b259c27956acBFd67d4636': [41, 47, 96, 97, 98, 99, 100, 106], '0x534631Bcf33BDb069fB20A93d2fdb9e4D4dD42CF': [48], '0x459e213D8B5E79d706aB22b945e3aF983d51BC4C': [108]}
     # fmt: on
     holders = {Web3.to_checksum_address(x): holders[x] for x in holders}
 
@@ -1034,6 +1035,42 @@ async def get_listings():
             }
         )
     return {"data": ret_data}
+
+
+class ItemAirdrop(BaseModel):
+    address: str
+
+
+@app.post("/airdrop")
+async def do_airdrop(item: ItemAirdrop):
+    address = Web3.to_checksum_address(item.address)
+
+    # Hardcode the amount we'll send to them...
+    # .001 eth =
+    amount_wei = 10**15
+
+    # 5. Call the withdraw function on the TokenVault contract
+    private_key = os.environ["PRIVATE_KEY"]
+    account = Account.from_key(private_key)
+    account_address = account.address
+    nonce = await web3.eth.get_transaction_count(account_address)
+    gas_price = await web3.eth.gas_price
+
+    # Build the transaction
+    tx = {
+        "nonce": nonce,
+        "to": address,
+        "value": amount_wei,
+        "gas": 21000,
+        "gasPrice": gas_price,
+        "from": account_address,
+        "chainId": 84532,
+    }
+
+    signed_tx = web3.eth.account.sign_transaction(tx, private_key)
+    tx_hash = await web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    print("DONE", tx_hash)
+    return {"success": True}
 
 
 # RUN:
