@@ -44,7 +44,8 @@ with open("TokenVault.json", "r") as f:
     token_vault_abi = json.loads(f.read())
 
 
-nft_contract_address = "0xc87716e22EFc71D35717166A83eC0Dc751DbC421"
+# nft_contract_address = "0xc87716e22EFc71D35717166A83eC0Dc751DbC421"
+nft_contract_address = "0x50cf8d7bF52D50A77ecBF3f8310dE0200c7D8352"
 nft_contract_abi = """
     [{
     "inputs": [
@@ -220,7 +221,18 @@ class ItemDeposit(BaseModel):
 async def join_table(item: ItemJoinTable):
     table_id = item.tableId
     player_id = Web3.to_checksum_address(item.address)
-    deposit_amount = item.depositAmount
+    deposit_amount = int(item.depositAmount)
+
+    # Need to move balance to temp funds
+    bal_db = await read_balance_one(player_id)
+    assert bal_db["localBal"] >= deposit_amount
+
+    local_bal = bal_db["localBal"] - deposit_amount
+    in_play = bal_db["inPlay"] + deposit_amount
+
+    # update_balance(on_chain_bal_new, local_bal_new, inPlay, address)
+    await update_balance(bal_db["onChainBal"], local_bal, in_play, player_id)
+
     seat_i = item.seatI
     if table_id not in TABLE_STORE:
         return {"success": False, "error": "Table not found!"}
@@ -239,13 +251,24 @@ async def leave_table(item: ItemLeaveTable):
     seat_i = item.seatI
     if table_id not in TABLE_STORE:
         return {"success": False, "error": "Table not found!"}
+
     poker_table_obj = TABLE_STORE[table_id]
+    seat_i = poker_table_obj.player_to_seat[player_id]
+    table_stack = poker_table_obj.seats[seat_i]["stack"]
     # poker_table_obj.leave_table(seat_i, player_id)
     # try:
     poker_table_obj.leave_table_no_seat_i(player_id)
     # except:
     #     err = traceback.format_exc()
     #     return {"success": False, "error": err}
+    bal_db = await read_balance_one(player_id)
+
+    local_bal = bal_db["localBal"] + table_stack
+    # TODO - this assumes they're only ever at one table at a time...
+    in_play = 0
+
+    # update_balance(on_chain_bal_new, local_bal_new, inPlay, address)
+    await update_balance(bal_db["onChainBal"], local_bal, in_play, player_id)
 
     await ws_emit_actions(table_id, poker_table_obj)
     return {"success": True}
@@ -257,9 +280,20 @@ async def rebuy(item: ItemRebuy):
     player_id = Web3.to_checksum_address(item.address)
     rebuy_amount = item.rebuyAmount
     seat_i = item.seatI
+
     if table_id not in TABLE_STORE:
         return {"success": False, "error": "Table not found!"}
     poker_table_obj = TABLE_STORE[table_id]
+
+    seat_i = poker_table_obj.player_to_seat[player_id]
+    table_stack = poker_table_obj.seats[seat_i]["stack"]
+    bal_db = await read_balance_one(player_id)
+    # TODO - this assumes they're only ever at one table at a time...
+    in_play = table_stack + rebuy_amount
+
+    # update_balance(on_chain_bal_new, local_bal_new, inPlay, address)
+    await update_balance(bal_db["onChainBal"], bal_db["localBal"], in_play, player_id)
+
     # poker_table_obj.rebuy(seat_i, rebuy_amount, player_id)
     # try:
     poker_table_obj.rebuy_no_seat_i(rebuy_amount, player_id)
@@ -410,7 +444,7 @@ async def get_table(table_id: str):
 
 
 @app.get("/getHandHistory")
-async def get_table(tableId: str, handId: int):
+async def get_hand_history(tableId: str, handId: int):
     if tableId not in TABLE_STORE:
         return {"success": False, "error": "Table not found!"}
 
@@ -424,48 +458,42 @@ async def get_table(tableId: str, handId: int):
 def get_nft_holders():
     # Fine for this to be non-async, only runs on startup
     w3 = Web3(Web3.HTTPProvider(infura_url))
-    nft_contract_address = "0xc87716e22EFc71D35717166A83eC0Dc751DbC421"
-    nft_contract_abi = """
-        [{
-        "inputs": [
-        {
-            "internalType": "uint256",
-            "name": "tokenId",
-            "type": "uint256"
-        }
-        ],
-        "name": "ownerOf",
-        "outputs": [
-        {
-            "internalType": "address",
-            "name": "",
-            "type": "address"
-        }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-        }]
-    """
 
     # Create a contract instance
     nft_contract = w3.eth.contract(address=nft_contract_address, abi=nft_contract_abi)
-    holders = {}
-    # total_supply = nft_contract.functions.totalSupply().call()
-    # for token_id in range(total_supply):
-    token_id = 1
+    # Cache previous one to save on calls...
+    # fmt: off
+    holders = {'0xD9F8bf1F266E50Bb4dE528007f28c14bb7edaff7': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 101, 102, 103, 104, 105], '0xC52178a1b28AbF7734b259c27956acBFd67d4636': [41, 47, 96, 97, 98, 99, 100, 106], '0x534631Bcf33BDb069fB20A93d2fdb9e4D4dD42CF': [48]}
+    # fmt: on
+    holders = {Web3.to_checksum_address(x): holders[x] for x in holders}
+
+    token_id = 0
+    for addr in holders:
+        max_token_id = max(holders[addr])
+        token_id = max(token_id, max_token_id)
+
+    fails = 0
     while True:
         try:
+            token_id += 1
             owner = nft_contract.functions.ownerOf(token_id).call()
+            owner = Web3.to_checksum_address(owner)
             if owner in holders:
                 holders[owner].append(token_id)
             else:
                 holders[owner] = [token_id]
-            token_id += 1
-        except:
-            print("CRASEHD ON", token_id)
-            break
+            # time.sleep(0.25)
+        except Exception as e:
+            print("FAILED", e)
+            fails += 1
+            # time.sleep(5)
+            if fails >= 3:
+                print("CRASHED ON", token_id)
+                break
     global TOTAL_TOKENS
     TOTAL_TOKENS += token_id * 1000
+    print("CURRENT HOLDERS")
+    print(holders)
 
     return holders
 
@@ -754,7 +782,10 @@ async def post_deposited(item: ItemDeposit):
 @app.get("/getTokenBalance")
 async def get_token_balance(address: str):
     # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
-    address = Web3.to_checksum_address(address)
+    try:
+        address = Web3.to_checksum_address(address)
+    except:
+        pass
     try:
         bal = await read_balance_one(address)
     except:
