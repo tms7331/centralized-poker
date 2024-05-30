@@ -280,6 +280,9 @@ class PokerTable:
         hs_new = copy.deepcopy(hs)
 
         if action_type == ACT_SB_POST:
+            # CHECKS:
+            # we're at the proper stage
+
             # hs_new.hand_stage = ACT_BB_POST
             hs_new.facing_bet = amount
             hs_new.last_raise = amount
@@ -287,6 +290,9 @@ class PokerTable:
             hs_new.player_bet_street = amount
             hs_new.last_action_amount = amount
         elif action_type == ACT_BB_POST:
+            # CHECKS:
+            # we're at the proper stage
+
             # hs_new.hand_stage = HS_HOLECARDS_DEAL
             hs_new.facing_bet = amount
             hs_new.last_raise = amount
@@ -294,6 +300,10 @@ class PokerTable:
             hs_new.player_bet_street = amount
             hs_new.last_action_amount = amount
         elif action_type == ACT_BET:
+            # CHECKS:
+            # facing action is valid
+            # bet amount is valid
+
             # If they're betting it MUST be an amount greater than the previous amount bet
             # on this street...
             bet_amount_new = amount - hs.player_bet_street
@@ -305,14 +315,23 @@ class PokerTable:
             # For bets it reopens action
             hs_new.last_action_amount = bet_amount_new
         elif action_type == ACT_FOLD:
+            # CHECKS:
+            # None?  But what if someone folds before they post SB/BB?
+
             hs_new.last_action_amount = 0
         elif action_type == ACT_CALL:
+            # CHECKS:
+            # facing action is valid (bet, call, fold?)
+
             call_amount_new = hs.facing_bet - hs.player_bet_street
             call_amount_new = min(call_amount_new, hs.player_stack)
             hs_new.player_stack -= call_amount_new
             hs_new.player_bet_street += call_amount_new
             hs_new.last_action_amount = call_amount_new
         elif action_type == ACT_CHECK:
+            # CHECKS:
+            # facing action is valid (check, None)
+
             hs_new.last_action_amount = 0
 
         assert hs_new.player_stack >= 0, "Insufficient funds!"
@@ -627,9 +646,23 @@ class PokerTable:
     def _handle_auto_post(self, post_type: str):
         # If we have two active players and game is in preflop stage - Post!
         assert post_type in ["SB", "BB"]
+        # Only do it if we have at least two players?
+        active = sum(
+            [
+                1
+                for p in self.seats
+                if p is not None and p["in_hand"] and not p["sitting_out"]
+            ]
+        )
+        if active < 2:
+            return False
+
         if post_type == "SB" and len([p for p in self.seats if p is not None]) >= 2:
             assert self.hand_stage == HS_SB_POST_STAGE, "Bad hand stage!"
-            if self.seats[self.whose_turn]["auto_post"]:
+            if (
+                self.seats[self.whose_turn]["auto_post"]
+                and not self.seats[self.whose_turn]["sitting_out"]
+            ):
                 address_sb = self.seats[self.whose_turn]["address"]
                 self.take_action(
                     ACT_SB_POST, address_sb, self.small_blind, external=False
@@ -637,7 +670,10 @@ class PokerTable:
                 return True
         elif post_type == "BB":
             # whose_turn should have been incremented
-            if self.seats[self.whose_turn]["auto_post"]:
+            if (
+                self.seats[self.whose_turn]["auto_post"]
+                and not self.seats[self.whose_turn]["sitting_out"]
+            ):
                 address_bb = self.seats[self.whose_turn]["address"]
                 self.take_action(
                     ACT_BB_POST, address_bb, self.big_blind, external=False
