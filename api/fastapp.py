@@ -68,6 +68,10 @@ nft_contract_abi = """
     }]
 """
 
+# fmt: off
+nft_contract_abi = [{'type': 'function', 'name': 'approve', 'inputs': [{'name': 'to', 'type': 'address', 'internalType': 'address'}, {'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}], 'outputs': [], 'stateMutability': 'nonpayable'}, {'type': 'function', 'name': 'balanceOf', 'inputs': [{'name': 'owner', 'type': 'address', 'internalType': 'address'}], 'outputs': [{'name': '', 'type': 'uint256', 'internalType': 'uint256'}], 'stateMutability': 'view'}, {'type': 'function', 'name': 'getApproved', 'inputs': [{'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}], 'outputs': [{'name': '', 'type': 'address', 'internalType': 'address'}], 'stateMutability': 'view'}, {'type': 'function', 'name': 'isApprovedForAll', 'inputs': [{'name': 'owner', 'type': 'address', 'internalType': 'address'}, {'name': 'operator', 'type': 'address', 'internalType': 'address'}], 'outputs': [{'name': '', 'type': 'bool', 'internalType': 'bool'}], 'stateMutability': 'view'}, {'type': 'function', 'name': 'name', 'inputs': [], 'outputs': [{'name': '', 'type': 'string', 'internalType': 'string'}], 'stateMutability': 'view'}, {'type': 'function', 'name': 'ownerOf', 'inputs': [{'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}], 'outputs': [{'name': '', 'type': 'address', 'internalType': 'address'}], 'stateMutability': 'view'}, {'type': 'function', 'name': 'safeTransferFrom', 'inputs': [{'name': 'from', 'type': 'address', 'internalType': 'address'}, {'name': 'to', 'type': 'address', 'internalType': 'address'}, {'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}], 'outputs': [], 'stateMutability': 'nonpayable'}, {'type': 'function', 'name': 'safeTransferFrom', 'inputs': [{'name': 'from', 'type': 'address', 'internalType': 'address'}, {'name': 'to', 'type': 'address', 'internalType': 'address'}, {'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}, {'name': 'data', 'type': 'bytes', 'internalType': 'bytes'}], 'outputs': [], 'stateMutability': 'nonpayable'}, {'type': 'function', 'name': 'setApprovalForAll', 'inputs': [{'name': 'operator', 'type': 'address', 'internalType': 'address'}, {'name': 'approved', 'type': 'bool', 'internalType': 'bool'}], 'outputs': [], 'stateMutability': 'nonpayable'}, {'type': 'function', 'name': 'supportsInterface', 'inputs': [{'name': 'interfaceId', 'type': 'bytes4', 'internalType': 'bytes4'}], 'outputs': [{'name': '', 'type': 'bool', 'internalType': 'bool'}], 'stateMutability': 'view'}, {'type': 'function', 'name': 'symbol', 'inputs': [], 'outputs': [{'name': '', 'type': 'string', 'internalType': 'string'}], 'stateMutability': 'view'}, {'type': 'function', 'name': 'tokenURI', 'inputs': [{'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}], 'outputs': [{'name': '', 'type': 'string', 'internalType': 'string'}], 'stateMutability': 'view'}, {'type': 'function', 'name': 'transferFrom', 'inputs': [{'name': 'from', 'type': 'address', 'internalType': 'address'}, {'name': 'to', 'type': 'address', 'internalType': 'address'}, {'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}], 'outputs': [], 'stateMutability': 'nonpayable'}, {'type': 'event', 'name': 'Approval', 'inputs': [{'name': 'owner', 'type': 'address', 'indexed': True, 'internalType': 'address'}, {'name': 'approved', 'type': 'address', 'indexed': True, 'internalType': 'address'}, {'name': 'tokenId', 'type': 'uint256', 'indexed': True, 'internalType': 'uint256'}], 'anonymous': False}, {'type': 'event', 'name': 'ApprovalForAll', 'inputs': [{'name': 'owner', 'type': 'address', 'indexed': True, 'internalType': 'address'}, {'name': 'operator', 'type': 'address', 'indexed': True, 'internalType': 'address'}, {'name': 'approved', 'type': 'bool', 'indexed': False, 'internalType': 'bool'}], 'anonymous': False}, {'type': 'event', 'name': 'Transfer', 'inputs': [{'name': 'from', 'type': 'address', 'indexed': True, 'internalType': 'address'}, {'name': 'to', 'type': 'address', 'indexed': True, 'internalType': 'address'}, {'name': 'tokenId', 'type': 'uint256', 'indexed': True, 'internalType': 'uint256'}], 'anonymous': False}, {'type': 'error', 'name': 'ERC721IncorrectOwner', 'inputs': [{'name': 'sender', 'type': 'address', 'internalType': 'address'}, {'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}, {'name': 'owner', 'type': 'address', 'internalType': 'address'}]}, {'type': 'error', 'name': 'ERC721InsufficientApproval', 'inputs': [{'name': 'operator', 'type': 'address', 'internalType': 'address'}, {'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}]}, {'type': 'error', 'name': 'ERC721InvalidApprover', 'inputs': [{'name': 'approver', 'type': 'address', 'internalType': 'address'}]}, {'type': 'error', 'name': 'ERC721InvalidOperator', 'inputs': [{'name': 'operator', 'type': 'address', 'internalType': 'address'}]}, {'type': 'error', 'name': 'ERC721InvalidOwner', 'inputs': [{'name': 'owner', 'type': 'address', 'internalType': 'address'}]}, {'type': 'error', 'name': 'ERC721InvalidReceiver', 'inputs': [{'name': 'receiver', 'type': 'address', 'internalType': 'address'}]}, {'type': 'error', 'name': 'ERC721InvalidSender', 'inputs': [{'name': 'sender', 'type': 'address', 'internalType': 'address'}]}, {'type': 'error', 'name': 'ERC721NonexistentToken', 'inputs': [{'name': 'tokenId', 'type': 'uint256', 'internalType': 'uint256'}]}]
+# fmt: on
+
 # Create a contract instance
 nft_contract_async = web3.eth.contract(
     address=nft_contract_address, abi=nft_contract_abi
@@ -660,9 +664,9 @@ async def read_balance_one(address: str):
         if balance is None:
             raise HTTPException(status_code=404, detail="User not found")
         # db entries are now strings
-        balance["onChainBal"] = int(balance["onChainBal"])
-        balance["localBal"] = int(balance["localBal"])
-        balance["inPlay"] = int(balance["inPlay"])
+        balance["onChainBal"] = int(float(balance["onChainBal"]))
+        balance["localBal"] = int(float(balance["localBal"]))
+        balance["inPlay"] = int(float(balance["inPlay"]))
     connection.close()
     return balance
 
@@ -796,21 +800,23 @@ async def get_token_balance(address: str):
     user_bal = 0 if not user_bal else user_bal
     time_elapsed = time.time() - START_TIME
 
+    # """
     user_nfts = nft_owners.get(address, [])
     earning_rate = sum([nft_map[tokenId]["rarity"] for tokenId in user_nfts]) / 100
-
-    # Annualized rate
+    # Annualized rate - compare to total token supply
     earnings_pct = (time_elapsed / (60 * 60 * 24 * 365)) * earning_rate
-    real_rate = int(earnings_pct * TOTAL_TOKENS)
-    use_rate = real_rate
+    bonus_earnings = int(earnings_pct * TOTAL_TOKENS)
     # Set a minimum rate of 1 token every 30 seconds?
+    # But cap it at 2 tokens every 30 seconds...
     if earning_rate > 0:
         tokens_per_day = (60 * 60 * 24) / 30
         days_elapsed = time_elapsed / (60 * 60 * 24)
-        fake_rate = int(days_elapsed * tokens_per_day)
-        use_rate = max(real_rate, fake_rate)
-    user_bal += use_rate
-
+        fake_earnings_min = int(days_elapsed * tokens_per_day)
+        fake_earnings_max = fake_earnings_min * 2
+        bonus_earnings = max(bonus_earnings, fake_earnings_min)
+        bonus_earnings = min(bonus_earnings, fake_earnings_max)
+    user_bal += bonus_earnings
+    # """
     # Their 'localBal' is their available balance, think that's all we need to return?
     return {"data": user_bal}
 
@@ -841,7 +847,7 @@ async def get_real_time_conversion():
     return {"data": conv, "total_tokens": total_tokens, "total_eth": total_eth}
 
 
-@app.get("/get_leaderboard")
+@app.get("/getLeaderboard")
 async def get_leaderboard():
     global TOTAL_TOKENS
     connection = await get_db_connection()
@@ -853,9 +859,8 @@ async def get_leaderboard():
     leaders = []
     for user in users:
         if len(user["address"]) == 42:
-            leaders.append(
-                {"address": user["address"], "balance": int(user["localBal"])}
-            )
+            bal_tot = int(float(user["localBal"])) + int(float(user["inPlay"]))
+            leaders.append({"address": user["address"], "balance": bal_tot})
     print("GOT USERS", users)
     return {"leaderboard": leaders}
 
@@ -1070,6 +1075,42 @@ async def do_airdrop(item: ItemAirdrop):
     signed_tx = web3.eth.account.sign_transaction(tx, private_key)
     tx_hash = await web3.eth.send_raw_transaction(signed_tx.rawTransaction)
     print("DONE", tx_hash)
+    return {"success": True}
+
+
+@app.get("/getGamestate")
+async def get_gamestate(tableId: str):
+    if tableId not in TABLE_STORE:
+        return {"success": False, "error": "Table not found!"}
+    poker_table_obj = TABLE_STORE[tableId]
+    return {"data": poker_table_obj.serialize()}
+
+
+class ItemSetTokens(BaseModel):
+    address: str
+    depositAmount: int
+
+
+@app.post("/setTokens")
+async def set_tokens(item: ItemSetTokens):
+    address = Web3.to_checksum_address(item.address)
+    deposit_amount = item.depositAmount
+    deposit_amount = int(deposit_amount)
+    # So get the DIFF between what they have and what we've tracked
+
+    # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
+    try:
+        bal_db = await read_balance_one(address)
+        on_chain_bal_new = 0
+        local_bal_new = bal_db["localBal"] + deposit_amount
+        await update_balance(on_chain_bal_new, local_bal_new, bal_db["inPlay"], address)
+    except:
+        # {"address":"0x123","onChainBal":115,"localBal":21,"inPlay":456}
+        on_chain_bal_new = 0
+        local_bal_new = deposit_amount
+        print("CREATING NEW USER...", address, on_chain_bal_new, local_bal_new, 0)
+        await create_user(address, on_chain_bal_new, local_bal_new, 0)
+
     return {"success": True}
 
 
