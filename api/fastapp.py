@@ -634,6 +634,7 @@ async def update_balance(on_chain_bal_new, local_bal_new, inPlay, address):
     # (balance.onChainBal, balance.localBal, balance.inPlay, balance.address),
     address = Web3.to_checksum_address(address)
     connection = await get_db_connection()
+    print("ACTUALLY SETTING FOR ADDR", address)
     async with connection.cursor() as cursor:
         try:
             await cursor.execute(
@@ -859,8 +860,18 @@ async def get_leaderboard():
     leaders = []
     for user in users:
         if len(user["address"]) == 42:
+            user_nfts = nft_owners.get(user["address"], [])
+            earning_rate = (
+                sum([nft_map[tokenId]["rarity"] for tokenId in user_nfts]) / 100
+            )
             bal_tot = int(float(user["localBal"])) + int(float(user["inPlay"]))
-            leaders.append({"address": user["address"], "balance": bal_tot})
+            leaders.append(
+                {
+                    "address": user["address"],
+                    "balance": bal_tot,
+                    "earningRate": earning_rate,
+                }
+            )
     print("GOT USERS", users)
     return {"leaderboard": leaders}
 
@@ -1093,7 +1104,7 @@ class ItemSetTokens(BaseModel):
 
 @app.post("/setTokens")
 async def set_tokens(item: ItemSetTokens):
-    address = Web3.to_checksum_address(item.address)
+    address = item.address
     deposit_amount = item.depositAmount
     deposit_amount = int(deposit_amount)
     # So get the DIFF between what they have and what we've tracked
