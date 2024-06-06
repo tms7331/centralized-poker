@@ -35,10 +35,12 @@ from vanillapoker import poker, pokerutils
 load_dotenv()
 
 infura_key = os.environ["INFURA_KEY"]
+alchemy_key = os.environ["ALCHEMY_KEY"]
 infura_url = f"https://base-sepolia.infura.io/v3/{infura_key}"
+alchemy_url = f"https://base-sepolia.g.alchemy.com/v2/{alchemy_key}"
 
-web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(infura_url))
-token_vault_address = "0x10CA589B8E1d4aeD323c6aDB02D7aB7910ba25A9"
+web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(alchemy_url)) # if alchemy_url else Web3(Web3.HTTPProvider(infura_url))
+token_vault_address = "0xbCb7d24815d3CB781C42A3d5403E3443F1234166"
 
 with open("TokenVault.json", "r") as f:
     token_vault_abi = json.loads(f.read())
@@ -77,7 +79,7 @@ nft_contract_async = web3.eth.contract(
     address=nft_contract_address, abi=nft_contract_abi
 )
 token_vault = web3.eth.contract(address=token_vault_address, abi=token_vault_abi["abi"])
-
+print(token_vault)
 START_TIME = time.time()
 
 TOTAL_TOKENS = 0
@@ -234,6 +236,7 @@ async def join_table(item: ItemJoinTable):
     local_bal = bal_db["localBal"] - deposit_amount
     in_play = bal_db["inPlay"] + deposit_amount
 
+    print("JOINING TABLE")
     # update_balance(on_chain_bal_new, local_bal_new, inPlay, address)
     await update_balance(bal_db["onChainBal"], local_bal, in_play, player_id)
 
@@ -462,16 +465,17 @@ async def get_hand_history(tableId: str, handId: int):
 
 def get_nft_holders():
     # Fine for this to be non-async, only runs on startup
-    w3 = Web3(Web3.HTTPProvider(infura_url))
-
+    w3 = Web3(Web3.HTTPProvider(alchemy_url)) # if alchemy_url else Web3(Web3.HTTPProvider(infura_url))
+    print(w3)
     # Create a contract instance
     nft_contract = w3.eth.contract(address=nft_contract_address, abi=nft_contract_abi)
+
     # Cache previous one to save on calls...
     # fmt: off
     holders = {'0xD9F8bf1F266E50Bb4dE528007f28c14bb7edaff7': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 101, 102, 103, 104, 105, 107], '0xC52178a1b28AbF7734b259c27956acBFd67d4636': [41, 47, 96, 97, 98, 99, 100, 106], '0x534631Bcf33BDb069fB20A93d2fdb9e4D4dD42CF': [48], '0x459e213D8B5E79d706aB22b945e3aF983d51BC4C': [108]}
     # fmt: on
     holders = {Web3.to_checksum_address(x): holders[x] for x in holders}
-
+    print(holders)
     token_id = 0
     for addr in holders:
         max_token_id = max(holders[addr])
@@ -492,8 +496,8 @@ def get_nft_holders():
             print("FAILED", e)
             fails += 1
             # time.sleep(5)
-            if fails >= 3:
-                print("CRASHED ON", token_id)
+            if fails >= 10:
+                print("CRASHED ON", token_id, owner)
                 break
     global TOTAL_TOKENS
     TOTAL_TOKENS += token_id * 1000
@@ -702,7 +706,7 @@ async def withdraw(item: WithdrawItem):
 
     # 2. seeing how much they should get
     total_eth = await web3.eth.get_balance(token_vault_address)
-
+    
     global TOTAL_TOKENS
     their_pct = amount / TOTAL_TOKENS
     # This will be in gwei
@@ -806,6 +810,7 @@ async def get_token_balance(address: str):
     earning_rate = sum([nft_map[tokenId]["rarity"] for tokenId in user_nfts]) / 100
     # Annualized rate - compare to total token supply
     earnings_pct = (time_elapsed / (60 * 60 * 24 * 365)) * earning_rate
+    print("ADDRESS, EARNINGS PCT", address, earnings_pct)
     bonus_earnings = int(earnings_pct * TOTAL_TOKENS)
     # Set a minimum rate of 1 token every 30 seconds?
     # But cap it at 2 tokens every 30 seconds...
